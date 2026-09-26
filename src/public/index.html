@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authorized Link & Metadata Scraper</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #0b0f19;
+      --bg-card: #111827;
+      --bg-elevated: #1f2937;
+      --border-color: #374151;
+      --text-main: #f9fafb;
+      --text-muted: #9ca3af;
+      --accent-blue: #3b82f6;
+      --accent-blue-hover: #2563eb;
+      --status-resolved: #10b981;
+      --status-partial: #f59e0b;
+      --status-challenge: #8b5cf6;
+      --status-error: #ef4444;
+      --status-info: #06b6d4;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      padding: 24px;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 1320px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge-pill {
+      font-size: 0.75rem;
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--accent-blue);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-weight: 500;
+    }
+
+    /* Submit section */
+    .submit-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+
+    .input-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      min-width: 280px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-main);
+      padding: 10px 14px;
+      font-size: 0.95rem;
+      font-family: inherit;
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+
+    button {
+      background: var(--accent-blue);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 20px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.95rem;
+      transition: background 0.15s ease;
+    }
+
+    button:hover {
+      background: var(--accent-blue-hover);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    select.quality-select {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-main);
+      padding: 10px 14px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      cursor: pointer;
+      min-width: 170px;
+    }
+
+    select.quality-select:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+
+    .filter-pills {
+      display: flex;
+      gap: 6px;
+      background: var(--bg-elevated);
+      padding: 4px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      flex-wrap: wrap;
+    }
+
+    .filter-pill {
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .filter-pill:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .filter-pill.active {
+      background: var(--accent-blue);
+      color: white;
+      box-shadow: 0 2px 6px rgba(59, 130, 246, 0.35);
+    }
+
+    /* Metrics Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-top: 6px;
+    }
+
+    .stat-value.total { color: var(--text-main); }
+    .stat-value.resolved { color: var(--status-resolved); }
+    .stat-value.partial { color: var(--status-partial); }
+    .stat-value.challenge { color: var(--status-challenge); }
+    .stat-value.errors { color: var(--status-error); }
+
+    /* Scope Tabs & Container Switcher */
+    .table-container-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+
+    .scope-tabs-bar {
+      display: flex;
+      background: #0f172a;
+      border-bottom: 1px solid var(--border-color);
+      padding: 8px 12px 0 12px;
+      gap: 8px;
+      overflow-x: auto;
+    }
+
+    .scope-tab {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid transparent;
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      padding: 12px 20px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.15s ease;
+      position: relative;
+      white-space: nowrap;
+    }
+
+    .scope-tab:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .scope-tab.active {
+      color: #60a5fa;
+      background: var(--bg-card);
+      border-color: var(--border-color);
+      border-bottom: 2px solid #3b82f6;
+      margin-bottom: -1px;
+    }
+
+    .tab-counter {
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-weight: 700;
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+    }
+
+    .scope-tab.active .tab-counter {
+      background: rgba(59, 130, 246, 0.2);
+      color: #93c5fd;
+      border: 1px solid rgba(59, 130, 246, 0.4);
+    }
+
+    .scope-filter-toolbar {
+      padding: 14px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .filter-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-ep {
+      background: rgba(6, 182, 212, 0.15);
+      color: #22d3ee;
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-family: monospace;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-pack {
+      background: rgba(168, 85, 247, 0.15);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-family: monospace;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-movie {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-family: monospace;
+    }
+
+    .table-responsive {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+
+    th {
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      padding: 12px 16px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border-color);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tbody tr {
+      cursor: pointer;
+      transition: background 0.1s ease;
+    }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .status-badge.RESOLVED {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--status-resolved);
+    }
+
+    .status-badge.PARTIAL {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--status-partial);
+    }
+
+    .status-badge.HUMAN_VERIFICATION_REQUIRED {
+      background: rgba(139, 92, 246, 0.2);
+      color: var(--status-challenge);
+    }
+
+    .status-badge.DISCOVERED, .status-badge.PARSING {
+      background: rgba(6, 182, 212, 0.15);
+      color: var(--status-info);
+    }
+
+    .status-badge.ERROR, .status-badge.ACCESS_DENIED, .status-badge.TIMEOUT, .status-badge.REDIRECT_LIMIT_EXCEEDED {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--status-error);
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      max-width: 800px;
+      width: 100%;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    pre {
+      background: var(--bg-base);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      overflow-x: auto;
+      color: #e5e7eb;
+    }
+
+    .close-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.5rem;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .close-btn:hover {
+      color: var(--text-main);
+    }
+
+    .empty-state {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--text-muted);
+    }
+
+    .btn-quick-resolve {
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-quick-resolve:hover {
+      background: #1d4ed8;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>
+          Authorized Link & Metadata Scraper
+          <span class="badge-pill">Production v1.2</span>
+        </h1>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">
+          Modular pipeline for authorized provider discovery, TV series episodes & packs, and HubCloud resolver
+        </p>
+      </div>
+      <div>
+        <button id="refreshBtn" style="background: var(--bg-elevated); border: 1px solid var(--border-color);">
+          Refresh
+        </button>
+      </div>
+    </header>
+
+    <!-- Scrape Submission Form -->
+    <div class="submit-card">
+      <h3 style="font-size: 1rem; font-weight: 600;">Scrape Authorized URL</h3>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 2px;">
+        Enter a 4KHDHub, XDMovies, or CloudMovieZ URL to discover and resolve clean HubCloud / provider links.
+      </p>
+      <form id="scrapeForm" class="input-group">
+        <input type="text" id="targetUrl" placeholder="https://top.xdmovies.wtf/series/... or https://4khdhub.one/..." required />
+        <select id="targetScope" class="quality-select" title="Content Type / Scope">
+          <option value="episode" selected>🎬 Individual Episodes (Single EP's)</option>
+          <option value="pack">📦 Complete Season (Zip/Pack)</option>
+          <option value="all">📁 All Content</option>
+        </select>
+        <select id="targetQuality" class="quality-select" title="Target Quality">
+          <option value="all">⚡ All Qualities</option>
+          <option value="2160p">4K / 2160p</option>
+          <option value="1080p">1080p (FHD)</option>
+          <option value="720p">720p (HD)</option>
+          <option value="480p">480p (SD)</option>
+        </select>
+        <button type="submit" id="submitBtn">Start Scrape</button>
+      </form>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; flex-wrap: wrap; gap: 8px;">
+        <div id="submitFeedback" style="font-size: 0.85rem;"></div>
+        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: #94a3b8; cursor: pointer; user-select: none;">
+          <input type="checkbox" id="autoResetCheckbox" checked style="accent-color: var(--accent-blue); cursor: pointer;" />
+          Reset old data on new scrape
+        </label>
+      </div>
+
+      <details style="margin-top: 14px; font-size: 0.85rem; color: var(--text-muted); border-top: 1px dashed var(--border-color); padding-top: 10px;">
+        <summary style="cursor: pointer; font-weight: 500; color: #93c5fd; user-select: none;">
+          ⚡ Or Paste HTML Directly (Instant extraction without bot challenges or network delays)
+        </summary>
+        <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+          <textarea id="rawHtmlTextarea" rows="4" style="width: 100%; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; color: #f3f4f6; font-family: monospace; font-size: 0.8rem; padding: 8px; resize: vertical;" placeholder="Paste raw page HTML here..."></textarea>
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <input type="text" id="rawHtmlSourceUrl" placeholder="Source URL (e.g. https://top.xdmovies.wtf/series/... or https://4khdhub.one/...)" style="flex: 1; min-width: 260px; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #f3f4f6; font-size: 0.85rem;" />
+            <select id="rawHtmlScope" class="quality-select" style="min-width: 140px; padding: 6px 10px; font-size: 0.85rem;">
+              <option value="episode" selected>🎬 Single EP's</option>
+              <option value="pack">📦 Zip / Pack</option>
+              <option value="all">📁 All Content</option>
+            </select>
+            <select id="rawHtmlQuality" class="quality-select" style="min-width: 130px; padding: 6px 10px; font-size: 0.85rem;">
+              <option value="all">⚡ All Qualities</option>
+              <option value="2160p">2160p</option>
+              <option value="1080p">1080p</option>
+              <option value="720p">720p</option>
+              <option value="480p">480p</option>
+            </select>
+            <button type="button" id="parseRawHtmlBtn" style="background: var(--accent-blue); border: none; border-radius: 6px; color: white; padding: 7px 18px; font-weight: 600; cursor: pointer;">Parse HTML</button>
+          </div>
+          <div id="rawHtmlFeedback" style="font-size: 0.8rem;"></div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Stats Dashboard -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Jobs</div>
+        <div class="stat-value total" id="statTotal">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Resolved</div>
+        <div class="stat-value resolved" id="statResolved">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Partial</div>
+        <div class="stat-value partial" id="statPartial">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Human Verification</div>
+        <div class="stat-value challenge" id="statChallenge">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Errors</div>
+        <div class="stat-value errors" id="statErrors">0</div>
+      </div>
+    </div>
+
+    <!-- Container Section with Scope Switcher Tabs -->
+    <div class="table-container-card">
+      <!-- High-visibility Scope Switcher Tabs -->
+      <div class="scope-tabs-bar" id="scopeTabsBar">
+        <button type="button" class="scope-tab active" data-scope="episode" id="tabEpisode">
+          <span>🎬 Download Individual Episodes</span>
+          <span class="tab-counter" id="tabCountEpisodes">0</span>
+        </button>
+        <button type="button" class="scope-tab" data-scope="pack" id="tabPack">
+          <span>📦 Complete Season (Zip/Pack)</span>
+          <span class="tab-counter" id="tabCountPacks">0</span>
+        </button>
+        <button type="button" class="scope-tab" data-scope="all" id="tabAll">
+          <span>⚡ All Content</span>
+          <span class="tab-counter" id="tabCountAll">0</span>
+        </button>
+      </div>
+
+      <!-- Filter Toolbar -->
+      <div class="scope-filter-toolbar">
+        <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+          <!-- Season Filter Pills -->
+          <div class="filter-group" id="seasonFilterGroup">
+            <span class="filter-label">Season:</span>
+            <div class="filter-pills" id="seasonFilterPills">
+              <button type="button" class="filter-pill active" data-season="all">All Seasons</button>
+            </div>
+          </div>
+
+          <!-- Quality Filter Pills -->
+          <div class="filter-group" id="qualityFilterGroup">
+            <span class="filter-label">Quality:</span>
+            <div class="filter-pills" id="qualityFilterPills">
+              <button type="button" class="filter-pill active" data-quality="all">All</button>
+              <button type="button" class="filter-pill" data-quality="2160p">2160p</button>
+              <button type="button" class="filter-pill" data-quality="1080p">1080p</button>
+              <button type="button" class="filter-pill" data-quality="720p">720p</button>
+              <button type="button" class="filter-pill" data-quality="480p">480p</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Controls -->
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <span id="filteredCountInfo" style="font-size: 0.8rem; color: var(--text-muted); margin-right: 4px;"></span>
+          <button type="button" id="copyFormattedBtn" class="filter-pill" style="border: 1px solid var(--accent-blue); color: #60a5fa; cursor: pointer; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;" title="Copy visible links as: Name : <filename> HUBCLOUD = <link>">
+            📋 Copy Formatted
+          </button>
+          <button type="button" id="downloadFormattedBtn" class="filter-pill" style="border: 1px solid var(--border-color); color: #94a3b8; cursor: pointer; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px;" title="Download visible links as text file">
+            💾 Download .txt
+          </button>
+          <button type="button" id="resetDataBtn" class="filter-pill" style="border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; cursor: pointer; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px;" title="Clear all scraped data">
+            🗑️ Reset Data
+          </button>
+        </div>
+      </div>
+
+      <!-- Scraped Records Table -->
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th style="min-width: 420px;">Release File Name / Title</th>
+              <th>Scope / Episode</th>
+              <th>Quality</th>
+              <th>Provider</th>
+              <th>Status</th>
+              <th style="text-align: right; min-width: 100px;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="linksTableBody">
+            <tr>
+              <td colspan="6" class="empty-state">Loading scraped records...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Record Inspection Modal -->
+  <div id="recordModal" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modalTitle" style="font-size: 1.1rem; font-weight: 600;">Complete Extraction Record</h3>
+        <button class="close-btn" id="modalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <pre><code id="modalJson"></code></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const linksTableBody = document.getElementById('linksTableBody');
+    const recordModal = document.getElementById('recordModal');
+    const modalJson = document.getElementById('modalJson');
+    const modalClose = document.getElementById('modalClose');
+    const scrapeForm = document.getElementById('scrapeForm');
+    const targetUrlInput = document.getElementById('targetUrl');
+    const targetScopeSelect = document.getElementById('targetScope');
+    const targetQualitySelect = document.getElementById('targetQuality');
+    const submitBtn = document.getElementById('submitBtn');
+    const submitFeedback = document.getElementById('submitFeedback');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const autoResetCheckbox = document.getElementById('autoResetCheckbox');
+    const resetDataBtn = document.getElementById('resetDataBtn');
+    const copyFormattedBtn = document.getElementById('copyFormattedBtn');
+    const downloadFormattedBtn = document.getElementById('downloadFormattedBtn');
+    const filteredCountInfo = document.getElementById('filteredCountInfo');
+
+    const rawHtmlTextarea = document.getElementById('rawHtmlTextarea');
+    const rawHtmlSourceUrl = document.getElementById('rawHtmlSourceUrl');
+    const rawHtmlScope = document.getElementById('rawHtmlScope');
+    const rawHtmlQuality = document.getElementById('rawHtmlQuality');
+    const parseRawHtmlBtn = document.getElementById('parseRawHtmlBtn');
+    const rawHtmlFeedback = document.getElementById('rawHtmlFeedback');
+
+    let allLinks = [];
+    let currentScopeFilter = 'episode'; // Default container: Download Individual Episodes
+    let currentSeasonFilter = 'all';
+    let currentQualityFilter = 'all';
+
+    async function loadStats() {
+      try {
+        const res = await fetch('/api/stats');
+        if (res.ok) {
+          const data = await res.json();
+          document.getElementById('statTotal').textContent = data.total;
+          document.getElementById('statResolved').textContent = data.resolved;
+          document.getElementById('statPartial').textContent = data.partial;
+          document.getElementById('statChallenge').textContent = data.humanVerification;
+          document.getElementById('statErrors').textContent = data.errors;
+        }
+      } catch (err) {
+        console.error('Failed loading stats:', err);
+      }
+    }
+
+    async function loadLinks() {
+      try {
+        // Fetch up to 1000 records so entire TV seasons and episodes are available client-side
+        const res = await fetch('/api/links?limit=1000');
+        if (res.ok) {
+          allLinks = await res.json();
+          updateTabCounts();
+          updateSeasonPills();
+          renderTable();
+        }
+      } catch (err) {
+        console.error('Failed loading links:', err);
+      }
+    }
+
+    let userHasManuallySelectedScope = false;
+
+    /**
+     * Robust quality matching helper for client-side filtering.
+     * Accurately matches 2160p <-> 4K/UHD, 1080p <-> FHD, 720p <-> HD, 480p <-> SD.
+     */
+    function matchesQuality(linkQuality, targetQuality) {
+      if (!targetQuality || targetQuality === 'all') return true;
+      if (!linkQuality) return false;
+      const l = String(linkQuality).toLowerCase().trim();
+      const t = String(targetQuality).toLowerCase().trim();
+      if (l === t) return true;
+      const normL = l.replace(/p$/, '');
+      const normT = t.replace(/p$/, '');
+      if (normL === normT) return true;
+
+      // 2160p / 4K / UHD
+      if (/2160|4k|uhd/i.test(t) && /2160|4k|uhd/i.test(l)) return true;
+      // 1080p / FHD
+      if (/1080|fhd/i.test(t) && /1080|fhd/i.test(l)) return true;
+      // 720p / HD
+      if (/720|hd/i.test(t) && /720|hd/i.test(l) && !/1080|fhd/i.test(l)) return true;
+      // 480p / SD
+      if (/480|sd/i.test(t) && /480|sd/i.test(l)) return true;
+
+      return l.includes(normT);
+    }
+
+    function updateTabCounts() {
+      let epCount = 0;
+      let packCount = 0;
+      let allCount = 0;
+
+      (allLinks || []).forEach((link) => {
+        const url = link.providerUrl || '';
+        // Never count greenmotors mediator links
+        if (url.includes('greenmotors') || url.includes('?id=')) return;
+        const scope = link.scope || (link.episode !== null && link.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
+        if (scope === 'episode') epCount++;
+        else if (scope === 'pack') packCount++;
+        allCount++;
+      });
+
+      const epBadge = document.getElementById('tabCountEpisodes');
+      const packBadge = document.getElementById('tabCountPacks');
+      const allBadge = document.getElementById('tabCountAll');
+
+      if (epBadge) epBadge.textContent = epCount;
+      if (packBadge) packBadge.textContent = packCount;
+      if (allBadge) allBadge.textContent = allCount;
+
+      // Smart auto-selection if user hasn't explicitly clicked a tab
+      if (!userHasManuallySelectedScope) {
+        if (currentScopeFilter === 'episode' && epCount === 0 && packCount > 0) {
+          setActiveScopeTab('pack', false);
+        } else if (currentScopeFilter === 'pack' && packCount === 0 && epCount > 0) {
+          setActiveScopeTab('episode', false);
+        } else if (currentScopeFilter !== 'all' && epCount === 0 && packCount === 0 && allCount > 0) {
+          setActiveScopeTab('all', false);
+        }
+      }
+    }
+
+    function updateSeasonPills() {
+      const seasonPillsContainer = document.getElementById('seasonFilterPills');
+      const seasonFilterGroup = document.getElementById('seasonFilterGroup');
+      if (!seasonPillsContainer) return;
+
+      // If scope is 'pack', season filtering on packs is usually not needed or optional
+      if (currentScopeFilter === 'pack') {
+        if (seasonFilterGroup) seasonFilterGroup.style.display = 'none';
+        return;
+      }
+
+      // Extract unique seasons from records belonging to active scope
+      const relevantLinks = (allLinks || []).filter((l) => {
+        const scope = l.scope || (l.episode !== null && l.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
+        if (currentScopeFilter === 'episode' && scope !== 'episode') return false;
+        return l.season !== null && l.season !== undefined;
+      });
+
+      const seasons = [...new Set(relevantLinks.map((l) => l.season))].sort((a, b) => b - a);
+
+      if (seasons.length <= 1 && currentScopeFilter !== 'episode') {
+        if (seasonFilterGroup) seasonFilterGroup.style.display = 'none';
+        return;
+      }
+
+      if (seasonFilterGroup) seasonFilterGroup.style.display = 'flex';
+
+      let html = `<button type="button" class="filter-pill ${currentSeasonFilter === 'all' ? 'active' : ''}" data-season="all">All Seasons</button>`;
+      seasons.forEach((s) => {
+        const sLabel = `Season ${s}`;
+        const isActive = String(currentSeasonFilter) === String(s);
+        html += `<button type="button" class="filter-pill ${isActive ? 'active' : ''}" data-season="${s}">${sLabel}</button>`;
+      });
+
+      seasonPillsContainer.innerHTML = html;
+
+      seasonPillsContainer.querySelectorAll('.filter-pill').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          currentSeasonFilter = btn.getAttribute('data-season') || 'all';
+          updateSeasonPills();
+          renderTable();
+        });
+      });
+    }
+
+    function getFilteredLinks() {
+      return (allLinks || []).filter((link) => {
+        // 1. STRICT SECURITY & FIDELITY: Never show or output greenmotors mediator URLs
+        const url = link.providerUrl || '';
+        if (url.includes('greenmotors') || url.includes('?id=')) return false;
+
+        // 2. Scope Container Filter
+        const scope = link.scope || (link.episode !== null && link.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
+        if (currentScopeFilter === 'episode' && scope !== 'episode') return false;
+        if (currentScopeFilter === 'pack' && scope !== 'pack') return false;
+
+        // 3. Season Filter
+        if (currentSeasonFilter !== 'all') {
+          if (String(link.season) !== String(currentSeasonFilter)) return false;
+        }
+
+        // 4. Robust Quality Filter
+        if (currentQualityFilter !== 'all') {
+          if (!matchesQuality(link.quality, currentQualityFilter)) return false;
+        }
+
+        return true;
+      });
+    }
+
+    function renderTable() {
+      const visibleLinks = getFilteredLinks();
+
+      // Update counter indicator
+      if (filteredCountInfo) {
+        const scopeName = currentScopeFilter === 'episode' ? 'Individual Episodes' : (currentScopeFilter === 'pack' ? 'Season Packs' : 'Records');
+        filteredCountInfo.textContent = `Showing ${visibleLinks.length} ${scopeName}`;
+      }
+
+      if (visibleLinks.length === 0) {
+        let msg = 'No records found';
+        if (currentScopeFilter === 'episode') msg = 'No Individual Episodes found';
+        else if (currentScopeFilter === 'pack') msg = 'No Complete Season (Zip/Pack) records found';
+
+        const filters = [];
+        if (currentSeasonFilter !== 'all') filters.push(`Season ${currentSeasonFilter}`);
+        if (currentQualityFilter !== 'all') filters.push(currentQualityFilter);
+        if (filters.length > 0) msg += ` for ${filters.join(', ')}`;
+
+        linksTableBody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">${escapeHtml(msg)}. Select another container or quality above.</td>
+          </tr>
+        `;
+        return;
+      }
+
+      linksTableBody.innerHTML = visibleLinks.map((link, idx) => {
+        const statusClass = link.status || 'UNKNOWN';
+        const displayTitle = link.filename || link.title || 'Untitled Release';
+        const scope = link.scope || (link.episode !== null && link.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
+
+        // Scope badge
+        let scopeBadgeHtml = '';
+        if (scope === 'episode') {
+          const epLabel = (link.season !== null && link.season !== undefined && link.episode !== null && link.episode !== undefined)
+            ? `S${String(link.season).padStart(2, '0')}E${String(link.episode).padStart(2, '0')}`
+            : (link.episode !== null && link.episode !== undefined ? `EP ${link.episode}` : 'EPISODE');
+          scopeBadgeHtml = `<span class="badge-ep">${escapeHtml(epLabel)}</span>`;
+        } else if (scope === 'pack') {
+          const packLabel = (link.season !== null && link.season !== undefined)
+            ? `S${String(link.season).padStart(2, '0')} PACK`
+            : 'ZIP / PACK';
+          scopeBadgeHtml = `<span class="badge-pack">${escapeHtml(packLabel)}</span>`;
+        } else {
+          scopeBadgeHtml = `<span class="badge-movie">MOVIE</span>`;
+        }
+
+        // Action column
+        let actionHtml = '';
+        if (link.providerUrl && (link.providerUrl.includes('hubcloud.ist/drive/') || link.provider !== 'HUBCLOUD')) {
+          actionHtml = `
+            <button type="button" class="filter-pill" style="border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; font-size: 0.75rem; padding: 4px 10px;" onclick="event.stopPropagation(); copySingleLink('${escapeHtml(link.providerUrl)}', this);" title="Copy Direct HubCloud Link">
+              Copy Link
+            </button>
+          `;
+        } else if (link.mediatorUrl) {
+          actionHtml = `
+            <button type="button" class="btn-quick-resolve" onclick="resolveHubCloudItem(event, '${link._id}');" title="Resolve mediator to HubCloud">
+              ⚡ Resolve
+            </button>
+          `;
+        } else {
+          actionHtml = `<span style="color: var(--text-muted); font-size: 0.75rem;">—</span>`;
+        }
+
+        return `
+          <tr data-index="${idx}">
+            <td style="max-width: 500px; word-break: break-all;">
+              <div style="font-family: monospace; font-size: 0.85rem; color: #f1f5f9; font-weight: 500;">
+                ${escapeHtml(displayTitle)}
+              </div>
+              ${link.providerUrl ? `
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                  <a href="${escapeHtml(link.providerUrl)}" target="_blank" style="color: #38bdf8; text-decoration: none;" onclick="event.stopPropagation();">
+                    ${escapeHtml(link.providerUrl)}
+                  </a>
+                </div>
+              ` : ''}
+            </td>
+            <td>${scopeBadgeHtml}</td>
+            <td><code>${escapeHtml(link.quality || 'N/A')}</code></td>
+            <td><span style="font-weight: 600; color: #e2e8f0;">${escapeHtml(link.provider || 'HUBCLOUD')}</span></td>
+            <td><span class="status-badge ${statusClass}">${escapeHtml(link.status)}</span></td>
+            <td style="text-align: right;">${actionHtml}</td>
+          </tr>
+        `;
+      }).join('');
+
+      // Click to open inspection modal
+      document.querySelectorAll('#linksTableBody tr[data-index]').forEach((row) => {
+        row.addEventListener('click', () => {
+          const index = parseInt(row.getAttribute('data-index'), 10);
+          showModal(visibleLinks[index]);
+        });
+      });
+    }
+
+    function setActiveScopeTab(scope, manual = true) {
+      if (manual) userHasManuallySelectedScope = true;
+      currentScopeFilter = scope;
+      document.querySelectorAll('#scopeTabsBar .scope-tab').forEach((tab) => {
+        if (tab.getAttribute('data-scope') === scope) {
+          tab.classList.add('active');
+        } else {
+          tab.classList.remove('active');
+        }
+      });
+      currentSeasonFilter = 'all';
+      updateSeasonPills();
+      renderTable();
+    }
+
+    function setActiveQualityPill(quality) {
+      currentQualityFilter = quality || 'all';
+      document.querySelectorAll('#qualityFilterPills .filter-pill').forEach((pill) => {
+        if (pill.getAttribute('data-quality') === currentQualityFilter) {
+          pill.classList.add('active');
+        } else {
+          pill.classList.remove('active');
+        }
+      });
+      renderTable();
+    }
+
+    // Scope tab click listeners
+    document.querySelectorAll('#scopeTabsBar .scope-tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const scope = tab.getAttribute('data-scope') || 'episode';
+        setActiveScopeTab(scope, true);
+      });
+    });
+
+    // Quality filter pills
+    document.querySelectorAll('#qualityFilterPills .filter-pill').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        const q = pill.getAttribute('data-quality') || 'all';
+        setActiveQualityPill(q);
+      });
+    });
+
+
+    function getFormattedText(links) {
+      if (!links || links.length === 0) return '';
+      return links
+        .filter((link) => {
+          const url = link.providerUrl || '';
+          // STRICT RULE: Never output intermediate mediator links like greenmotors
+          if (url.includes('greenmotors') || url.includes('?id=')) return false;
+          if ((link.provider || '').toUpperCase() === 'HUBCLOUD' && !url.includes('hubcloud.ist/drive/')) return false;
+          return Boolean(url);
+        })
+        .map((link) => {
+          const name = link.filename || link.title || 'Unknown';
+          const prov = (link.provider || 'HUBCLOUD').toUpperCase();
+          const url = link.providerUrl || '';
+          return `Name : ${name} ${prov} = ${url}`;
+        })
+        .join('\n');
+    }
+
+    // Copy Formatted links for the currently active container & filters
+    if (copyFormattedBtn) {
+      copyFormattedBtn.addEventListener('click', async () => {
+        const visibleLinks = getFilteredLinks();
+        const text = getFormattedText(visibleLinks);
+        if (!text) {
+          alert('No resolved HubCloud links available in this container to copy!');
+          return;
+        }
+        await navigator.clipboard.writeText(text);
+        const originalText = copyFormattedBtn.innerHTML;
+        const count = text.split('\n').filter(Boolean).length;
+        copyFormattedBtn.innerHTML = `✓ Copied ${count} Links!`;
+        copyFormattedBtn.style.borderColor = 'var(--status-resolved)';
+        copyFormattedBtn.style.color = 'var(--status-resolved)';
+        setTimeout(() => {
+          copyFormattedBtn.innerHTML = originalText;
+          copyFormattedBtn.style.borderColor = 'var(--accent-blue)';
+          copyFormattedBtn.style.color = '#60a5fa';
+        }, 2000);
+      });
+    }
+
+    // Download formatted .txt file
+    if (downloadFormattedBtn) {
+      downloadFormattedBtn.addEventListener('click', () => {
+        const visibleLinks = getFilteredLinks();
+        const text = getFormattedText(visibleLinks);
+        if (!text) {
+          alert('No resolved HubCloud links available to download!');
+          return;
+        }
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const filenamePrefix = currentScopeFilter === 'episode' ? 'episodes' : (currentScopeFilter === 'pack' ? 'packs' : 'links');
+        a.download = `scraped-${filenamePrefix}-${currentQualityFilter}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+    }
+
+    window.copySingleLink = async function(url, btn) {
+      await navigator.clipboard.writeText(url);
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '✓ Copied';
+      btn.style.color = '#10b981';
+      setTimeout(() => {
+        btn.innerHTML = originalText;
+        btn.style.color = '#34d399';
+      }, 1500);
+    };
+
+    async function resolveHubCloudItem(event, id) {
+      if (event) event.stopPropagation();
+      const btn = event.target;
+      const originalText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Resolving...';
+      btn.style.background = '#d97706';
+
+      try {
+        const res = await fetch('/api/resolve-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          btn.innerHTML = '✓ Done!';
+          btn.style.background = '#10b981';
+          setTimeout(() => {
+            loadLinks();
+            loadStats();
+          }, 600);
+        } else {
+          alert('Resolution notice: ' + (data.error || data.state || 'Failed'));
+          btn.disabled = false;
+          btn.innerHTML = originalText;
+          btn.style.background = '#2563eb';
+        }
+      } catch (err) {
+        alert('Network error: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        btn.style.background = '#2563eb';
+      }
+    }
+
+    // Scrape form submission
+    scrapeForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const url = targetUrlInput.value.trim();
+      const autoReset = autoResetCheckbox ? autoResetCheckbox.checked : true;
+      const quality = targetQualitySelect ? targetQualitySelect.value : 'all';
+      const scope = targetScopeSelect ? targetScopeSelect.value : 'episode';
+      if (!url) return;
+
+      submitBtn.disabled = true;
+      submitFeedback.textContent = `Submitting scrape job (Scope: ${scope}, Quality: ${quality})...`;
+      submitFeedback.style.color = 'var(--text-muted)';
+
+      try {
+        const res = await fetch('/api/scrape', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, quality, scope, autoReset }),
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          submitFeedback.textContent = `Job enqueued successfully (ID: ${data.jobId}). Processing...`;
+          submitFeedback.style.color = 'var(--status-resolved)';
+          targetUrlInput.value = '';
+          setActiveScopeTab(scope, true);
+          setActiveQualityPill(quality);
+          setTimeout(() => {
+            loadStats();
+            loadLinks();
+          }, 1500);
+        } else {
+          submitFeedback.textContent = `Error: ${data.error || 'Submission failed'}`;
+          submitFeedback.style.color = 'var(--status-error)';
+        }
+      } catch (err) {
+        submitFeedback.textContent = `Error: ${err.message}`;
+        submitFeedback.style.color = 'var(--status-error)';
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+
+    // Reset database
+    if (resetDataBtn) {
+      resetDataBtn.addEventListener('click', async () => {
+        if (!confirm('Are you sure you want to reset all data? This clears all scraped records.')) {
+          return;
+        }
+        resetDataBtn.disabled = true;
+        const originalText = resetDataBtn.innerHTML;
+        resetDataBtn.innerHTML = 'Resetting...';
+
+        try {
+          const res = await fetch('/api/reset', { method: 'POST' });
+          if (res.ok) {
+            allLinks = [];
+            userHasManuallySelectedScope = false;
+            setActiveScopeTab('episode', false);
+            setActiveQualityPill('all');
+            updateTabCounts();
+            renderTable();
+            loadStats();
+            submitFeedback.textContent = '✓ Scraped records have been cleared.';
+            submitFeedback.style.color = 'var(--status-resolved)';
+          } else {
+            alert('Failed to reset database.');
+          }
+        } catch (err) {
+          alert('Network error during reset: ' + err.message);
+        } finally {
+          resetDataBtn.disabled = false;
+          resetDataBtn.innerHTML = originalText;
+        }
+      });
+    }
+
+    // Direct HTML parser
+    if (parseRawHtmlBtn) {
+      parseRawHtmlBtn.addEventListener('click', async () => {
+        const html = rawHtmlTextarea.value.trim();
+        const sourceUrl = rawHtmlSourceUrl.value.trim() || 'https://4khdhub.one/tv-series/';
+        const quality = rawHtmlQuality ? rawHtmlQuality.value : 'all';
+        const scope = rawHtmlScope ? rawHtmlScope.value : 'episode';
+
+        if (!html) {
+          rawHtmlFeedback.textContent = 'Please paste HTML content first.';
+          rawHtmlFeedback.style.color = 'var(--status-error)';
+          return;
+        }
+
+        parseRawHtmlBtn.disabled = true;
+        rawHtmlFeedback.textContent = `Parsing HTML (Scope: ${scope}, Quality: ${quality})...`;
+        rawHtmlFeedback.style.color = 'var(--text-muted)';
+
+        try {
+          const res = await fetch('/api/parse-html', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ html, sourceUrl, quality, scope, autoReset: autoResetCheckbox ? autoResetCheckbox.checked : true }),
+          });
+
+          const data = await res.json();
+          if (res.ok) {
+            rawHtmlFeedback.textContent = `✓ Successfully extracted and resolved ${data.count} items!`;
+            rawHtmlFeedback.style.color = 'var(--status-resolved)';
+            rawHtmlTextarea.value = '';
+            setActiveScopeTab(data.activeScope || scope, true);
+            setActiveQualityPill(data.activeQuality || quality);
+            loadStats();
+            loadLinks();
+          } else {
+            rawHtmlFeedback.textContent = `Error: ${data.error || 'Parsing failed'}`;
+            rawHtmlFeedback.style.color = 'var(--status-error)';
+          }
+        } catch (err) {
+          rawHtmlFeedback.textContent = `Network error: ${err.message}`;
+          rawHtmlFeedback.style.color = 'var(--status-error)';
+        } finally {
+          parseRawHtmlBtn.disabled = false;
+        }
+      });
+    }
+
+    function showModal(record) {
+      modalJson.textContent = JSON.stringify(record, null, 2);
+      recordModal.style.display = 'flex';
+    }
+
+    modalClose.addEventListener('click', () => {
+      recordModal.style.display = 'none';
+    });
+
+    window.addEventListener('click', (e) => {
+      if (e.target === recordModal) {
+        recordModal.style.display = 'none';
+      }
+    });
+
+    refreshBtn.addEventListener('click', () => {
+      loadStats();
+      loadLinks();
+    });
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // Initial load and periodic polling
+    loadStats();
+    loadLinks();
+    setInterval(() => {
+      loadStats();
+      loadLinks();
+    }, 5000);
+  </script>
+</body>
+</html>
