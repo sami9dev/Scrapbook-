@@ -96,12 +96,26 @@ export class MediatorStateMachine {
   }
 
   getSummary() {
+    const totalMs = Date.now() - this.startTime;
+
+    // Build per-stage timing from transition history
+    const stageDurations = {};
+    for (let i = 0; i < this.history.length; i++) {
+      const entry = this.history[i];
+      const nextEntry = this.history[i + 1];
+      const durationMs = nextEntry
+        ? nextEntry.elapsedMs - entry.elapsedMs
+        : totalMs - entry.elapsedMs;
+      stageDurations[entry.to] = (stageDurations[entry.to] || 0) + durationMs;
+    }
+
     return {
       success: this.isSuccess(),
       state: this.state,
       destination: this.destination,
       error: this.error,
-      elapsedMs: Date.now() - this.startTime,
+      elapsedMs: totalMs,
+      stageDurations,
       meta: this.meta,
       history: this.history,
     };

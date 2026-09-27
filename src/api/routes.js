@@ -4,7 +4,8 @@ import { jobQueue } from '../queue/job-queue.js';
 import { jobsRepo, scrapedLinksRepo } from '../database/models.js';
 import { logger } from '../logging/logger.js';
 import { matchesQuality } from '../utils/normalize.js';
-
+import { runBoundedWithBrowser } from '../utils/concurrency.js';
+import { config } from '../config/config.js';
 
 const router = express.Router();
 
@@ -242,12 +243,31 @@ router.post('/parse-html', async (req, res) => {
         if (filtered.length > 0) toResolve = filtered;
       }
 
-      if (toResolve.length <= 2) {
-        for (const item of toResolve) {
-          try {
-            const medUrl = await getXDMoviesMediatorUrl(item.redirectUrl);
-            if (medUrl) {
-              const resObj = await resolveXDMoviesMediator(medUrl, { meta: item, headless: false });
+
+      const concurrencyLimit = config.mediatorConcurrency;
+      const batchStart = Date.now();
+      logger.parsing(`[XDMovies/parse-html] Starting concurrent resolution: ${toResolve.length} link(s), concurrency=${concurrencyLimit}`);
+
+      // Fire-and-forget background concurrent resolution. Results are saved as they complete.
+      // For ≤2 items this is equivalent to the old sequential path but uses the same code path.
+      (async () => {
+        try {
+          const { results: resolutionResults, timings: batchTimings } = await runBoundedWithBrowser(
+            toResolve.map((item, idx) => async (sharedBrowser) => {
+              const workerStart = Date.now();
+              logger.log('RESOLVER', `[XDMovies BG Worker ${idx + 1}/${toResolve.length}] Resolving [${item.quality}] [${item.scope}] "${item.filename}"`);
+
+              const medUrl = await getXDMoviesMediatorUrl(item.redirectUrl);
+              if (!medUrl) return null;
+
+              const resObj = await resolveXDMoviesMediator(medUrl, {
+                meta: item,
+                headless: false,
+                existingBrowser: sharedBrowser,
+              });
+
+              logger.log('TIMING', `[XDMovies BG Link ${idx + 1}/${toResolve.length}] Total: ${Date.now() - workerStart}ms | State: ${resObj.state}`);
+
               if (resObj.success && resObj.destination && isHubCloudDriveUrl(resObj.destination)) {
                 let finalTitle = resObj.meta?.filename || resObj.meta?.title || item.filename || item.title;
                 const hubMeta = await fetchHubCloudMetadata(resObj.destination);
@@ -271,49 +291,18 @@ router.post('/parse-html', async (req, res) => {
                   status: 'RESOLVED',
                 });
               }
-            }
-          } catch (err) {
-            logger.warning(`Direct XDMovies mediator resolution failed: ${err.message}`);
-          }
+              return resObj.state;
+            }),
+            concurrencyLimit,
+            { headless: false }
+          );
+          logger.log('TIMING', `[XDMovies BG] Batch complete: ${toResolve.length} link(s) | Wall: ${Date.now() - batchStart}ms | BrowserLaunch: ${batchTimings.browserStartMs}ms | Concurrency: ${concurrencyLimit}`);
+        } catch (bgErr) {
+          logger.warning(`[XDMovies BG] Concurrent resolution error: ${bgErr.message}`);
         }
-      } else {
-        // Resolve candidate links in background so user gets immediate response
-        (async () => {
-          for (const item of toResolve) {
-            try {
-              const medUrl = await getXDMoviesMediatorUrl(item.redirectUrl);
-              if (medUrl) {
-                const resObj = await resolveXDMoviesMediator(medUrl, { meta: item, headless: false });
-                if (resObj.success && resObj.destination && isHubCloudDriveUrl(resObj.destination)) {
-                  let finalTitle = resObj.meta?.filename || resObj.meta?.title || item.filename || item.title;
-                  const hubMeta = await fetchHubCloudMetadata(resObj.destination);
-                  if (hubMeta?.filename) finalTitle = hubMeta.filename;
+      })();
 
-                  await scrapedLinksRepo.saveLink({
-                    sourceUrl,
-                    sourceDomain: sourceUrl && sourceUrl.startsWith('http') ? new URL(sourceUrl).hostname : 'top.xdmovies.wtf',
-                    title: finalTitle,
-                    scope: item.scope,
-                    season: item.season,
-                    episode: item.episode,
-                    quality: item.quality,
-                    codec: item.codec,
-                    sizeDisplay: item.sizeDisplay,
-                    provider: 'HUBCLOUD',
-                    providerUrl: resObj.destination,
-                    mediatorUrl: medUrl,
-                    fileId: extractHubCloudDriveId(resObj.destination),
-                    filename: finalTitle,
-                    status: 'RESOLVED',
-                  });
-                }
-              }
-            } catch (err) {
-              logger.warning(`Background XDMovies mediator resolution failed: ${err.message}`);
-            }
-          }
-        })();
-      }
+
 
       return res.json({
         success: true,
@@ -365,58 +354,35 @@ router.post('/parse-html', async (req, res) => {
         if (filtered.length > 0) toResolve = filtered;
       }
 
-      if (toResolve.length <= 2) {
-        for (const item of toResolve) {
-          const resolution = await resolveMediatorFlow(item.mediatorUrl, {
-            meta: item,
-            countdownTimeout: 35000,
-            navigationTimeout: 20000,
-          });
 
-          if (resolution.success && resolution.destination && isHubCloudDriveUrl(resolution.destination)) {
-            let finalTitle = resolution.meta?.filename || resolution.meta?.title;
-            if (!finalTitle || finalTitle === item.title || finalTitle === 'Unknown Title') {
-              const hubMeta = await fetchHubCloudMetadata(resolution.destination);
-              if (hubMeta?.filename) {
-                finalTitle = hubMeta.filename;
-              }
-            }
-            finalTitle = finalTitle || item.filename || item.title;
+      const hkConcurrencyLimit = config.mediatorConcurrency;
+      const hkBatchStart = Date.now();
+      logger.parsing(`[4KHDHub/parse-html] Starting concurrent resolution: ${toResolve.length} link(s), concurrency=${hkConcurrencyLimit}`);
 
-            await scrapedLinksRepo.saveLink({
-              sourceUrl,
-              sourceDomain: sourceUrl && sourceUrl.startsWith('http') ? new URL(sourceUrl).hostname : '4khdhub.one',
-              title: finalTitle,
-              scope: item.scope || (item.episode !== null && item.episode !== undefined ? 'episode' : (item.season !== null && item.season !== undefined ? 'pack' : 'movie')),
-              season: item.season,
-              episode: item.episode,
-              quality: item.quality,
-              provider: 'HUBCLOUD',
-              providerUrl: resolution.destination,
-              mediatorUrl: item.mediatorUrl,
-              fileId: extractHubCloudDriveId(resolution.destination),
-              filename: finalTitle,
-              status: 'RESOLVED',
-            });
-          }
-        }
-      } else {
-        // Resolve candidate links in background so user gets immediate response
-        (async () => {
-          for (const item of toResolve) {
-            try {
+      // Fire-and-forget: return response to user immediately, resolve in background
+      (async () => {
+        try {
+          const { results: resolutionResults, timings: batchTimings } = await runBoundedWithBrowser(
+            toResolve.map((item, idx) => async (sharedBrowser) => {
+              const workerStart = Date.now();
+              logger.log('RESOLVER', `[4KHDHub BG Worker ${idx + 1}/${toResolve.length}] Resolving [${item.quality}] [${item.scope || 'episode'}] "${item.title}"`);
+
               const resolution = await resolveMediatorFlow(item.mediatorUrl, {
                 meta: item,
                 countdownTimeout: 35000,
                 navigationTimeout: 20000,
+                existingBrowser: sharedBrowser,
               });
+
+              // Per-link timing breakdown
+              const stages = resolution.stageDurations || {};
+              logger.log('TIMING', `[4KHDHub BG Link ${idx + 1}/${toResolve.length}] Total: ${Date.now() - workerStart}ms | Nav: ${stages.MEDIATOR_OPEN || 0}ms | ExternalWait: ${(stages.WAITING || 0) + (stages.COUNTDOWN || 0)}ms | State: ${resolution.state}`);
+
               if (resolution.success && resolution.destination && isHubCloudDriveUrl(resolution.destination)) {
                 let finalTitle = resolution.meta?.filename || resolution.meta?.title;
                 if (!finalTitle || finalTitle === item.title || finalTitle === 'Unknown Title') {
                   const hubMeta = await fetchHubCloudMetadata(resolution.destination);
-                  if (hubMeta?.filename) {
-                    finalTitle = hubMeta.filename;
-                  }
+                  if (hubMeta?.filename) finalTitle = hubMeta.filename;
                 }
                 finalTitle = finalTitle || item.filename || item.title;
 
@@ -436,12 +402,18 @@ router.post('/parse-html', async (req, res) => {
                   status: 'RESOLVED',
                 });
               }
-            } catch (err) {
-              logger.warning(`Background resolution failed for "${item.filename}": ${err.message}`);
-            }
-          }
-        })();
-      }
+              return resolution.state;
+            }),
+            hkConcurrencyLimit,
+            { headless: true }
+          );
+          logger.log('TIMING', `[4KHDHub BG] Batch complete: ${toResolve.length} link(s) | Wall: ${Date.now() - hkBatchStart}ms | BrowserLaunch: ${batchTimings.browserStartMs}ms | Concurrency: ${hkConcurrencyLimit}`);
+        } catch (bgErr) {
+          logger.warning(`[4KHDHub BG] Concurrent resolution error: ${bgErr.message}`);
+        }
+      })();
+
+
 
       return res.json({
         success: true,

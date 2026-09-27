@@ -9,6 +9,7 @@ import { normalizeSize, matchesQuality } from '../utils/normalize.js';
 import { scrapedLinksRepo, jobsRepo, SCRAPED_STATUS } from '../database/models.js';
 import { extractGdflixFileId } from '../providers/gdflix.js';
 import { extractOpaqueToken } from '../discovery/link-discovery.js';
+import { runBoundedWithBrowser } from '../utils/concurrency.js';
 
 // Pre-load registered providers
 import '../providers/gdflix.js';
@@ -241,41 +242,76 @@ export class JobQueue {
         if (filtered.length > 0) toResolve = filtered;
       }
 
-      let resolvedCount = 0;
-      for (const item of toResolve) {
-        logger.log('RESOLVER', `[XDMovies] Resolving [${item.quality}] [${item.scope}] "${item.filename}"`);
-        const mediatorUrl = await getXDMoviesMediatorUrl(item.redirectUrl);
-        if (!mediatorUrl) continue;
+      const concurrencyLimit = config.mediatorConcurrency;
+      const batchStart = Date.now();
+      logger.parsing(`[XDMovies] Starting concurrent mediator resolution: ${toResolve.length} link(s), concurrency=${concurrencyLimit}`);
 
-        const resolution = await resolveXDMoviesMediator(mediatorUrl, {
-          meta: item,
-          headless: false,
-        });
+      const { results: resolutionResults, timings: batchTimings } = await runBoundedWithBrowser(
+        toResolve.map((item, idx) => async (sharedBrowser) => {
+          const workerStart = Date.now();
+          logger.log('RESOLVER', `[XDMovies Worker ${idx + 1}/${toResolve.length}] Resolving [${item.quality}] [${item.scope}] "${item.filename}"`);
 
-        if (resolution.success && resolution.destination && isHubCloudDriveUrl(resolution.destination)) {
-          resolvedCount++;
-          let finalTitle = resolution.meta?.filename || resolution.meta?.title || item.filename || item.title;
-          const hubMeta = await fetchHubCloudMetadata(resolution.destination);
-          if (hubMeta?.filename) finalTitle = hubMeta.filename;
+          // Step 1: HTTP redirect follow (fast, ~100ms)
+          const mediatorUrl = await getXDMoviesMediatorUrl(item.redirectUrl);
+          if (!mediatorUrl) {
+            logger.warning(`[XDMovies Worker ${idx + 1}] No mediator URL resolved for ${item.redirectUrl}`);
+            return { item, resolution: null, mediatorUrl: null, finalTitle: null };
+          }
 
-          await scrapedLinksRepo.saveLink({
-            sourceUrl: job.url,
-            sourceDomain: new URL(job.url).hostname,
-            title: finalTitle,
-            scope: item.scope,
-            season: item.season,
-            episode: item.episode,
-            quality: item.quality,
-            codec: item.codec,
-            sizeDisplay: item.sizeDisplay,
-            provider: 'HUBCLOUD',
-            providerUrl: resolution.destination,
-            mediatorUrl,
-            fileId: extractHubCloudDriveId(resolution.destination),
-            filename: finalTitle,
-            status: SCRAPED_STATUS.RESOLVED,
+          // Step 2: Browser automation (slow — external countdown timers)
+          const resolution = await resolveXDMoviesMediator(mediatorUrl, {
+            meta: item,
+            headless: false,
+            existingBrowser: sharedBrowser,
           });
+
+          logger.log('TIMING', `[XDMovies Link ${idx + 1}/${toResolve.length}] Total: ${Date.now() - workerStart}ms | State: ${resolution.state}`);
+
+          // Step 3: Metadata fetch (optional, fast)
+          let finalTitle = resolution.meta?.filename || resolution.meta?.title || item.filename || item.title;
+          if (resolution.success && resolution.destination && isHubCloudDriveUrl(resolution.destination)) {
+            const hubMeta = await fetchHubCloudMetadata(resolution.destination);
+            if (hubMeta?.filename) finalTitle = hubMeta.filename;
+          }
+
+          return { item, resolution, mediatorUrl, finalTitle };
+        }),
+        concurrencyLimit,
+        { headless: false }
+      );
+
+      logger.log('TIMING', `[XDMovies] Batch complete: ${toResolve.length} link(s) | Wall: ${Date.now() - batchStart}ms | BrowserLaunch: ${batchTimings.browserStartMs}ms | Concurrency: ${concurrencyLimit}`);
+
+      let resolvedCount = 0;
+      for (const result of resolutionResults) {
+        if (result instanceof Error) {
+          logger.warning(`[XDMovies] Worker threw unexpected error: ${result.message}`);
+          continue;
         }
+        const { item, resolution, mediatorUrl, finalTitle } = result;
+        if (!resolution || !resolution.success || !resolution.destination || !isHubCloudDriveUrl(resolution.destination)) {
+          if (resolution) logger.warning(`[XDMovies] Resolution failed for "${item.filename}" (${resolution.state})`);
+          continue;
+        }
+
+        resolvedCount++;
+        await scrapedLinksRepo.saveLink({
+          sourceUrl: job.url,
+          sourceDomain: new URL(job.url).hostname,
+          title: finalTitle,
+          scope: item.scope,
+          season: item.season,
+          episode: item.episode,
+          quality: item.quality,
+          codec: item.codec,
+          sizeDisplay: item.sizeDisplay,
+          provider: 'HUBCLOUD',
+          providerUrl: resolution.destination,
+          mediatorUrl,
+          fileId: extractHubCloudDriveId(resolution.destination),
+          filename: finalTitle,
+          status: SCRAPED_STATUS.RESOLVED,
+        });
       }
 
       await jobsRepo.updateJob(jobId, {
@@ -348,27 +384,56 @@ export class JobQueue {
 
       logger.parsing(`Found ${allExtractedLinks.length} total link(s), resolving ${toResolve.length} candidate(s) for "${extracted.title}" (Scope: ${job.targetScope || 'all'}, Quality: ${job.targetQuality || 'all'})`);
 
-      let resolvedCount = 0;
-      for (const item of toResolve) {
-        logger.log('RESOLVER', `Resolving mediator for [${item.quality}] [${item.scope || 'episode'}] "${item.title}"`);
-        const resolution = await resolveMediatorFlow(item.mediatorUrl, {
-          meta: item,
-          countdownTimeout: 35000,
-          navigationTimeout: 20000,
-        });
+      const concurrencyLimit = config.mediatorConcurrency;
+      const batchStart = Date.now();
+      logger.parsing(`[4KHDHub] Starting concurrent mediator resolution: ${toResolve.length} link(s), concurrency=${concurrencyLimit}`);
 
-        if (resolution.success && resolution.destination && isHubCloudDriveUrl(resolution.destination)) {
-          resolvedCount++;
+      const { results: resolutionResults, timings: batchTimings } = await runBoundedWithBrowser(
+        toResolve.map((item, idx) => async (sharedBrowser) => {
+          const workerStart = Date.now();
+          logger.log('RESOLVER', `[4KHDHub Worker ${idx + 1}/${toResolve.length}] Resolving mediator for [${item.quality}] [${item.scope || 'episode'}] "${item.title}"`);
+
+          const resolution = await resolveMediatorFlow(item.mediatorUrl, {
+            meta: item,
+            countdownTimeout: 35000,
+            navigationTimeout: 20000,
+            existingBrowser: sharedBrowser,
+          });
+
+          // Per-link timing breakdown from StateMachine stage history
+          const stages = resolution.stageDurations || {};
+          const navMs = stages.MEDIATOR_OPEN || 0;
+          const waitMs = (stages.WAITING || 0) + (stages.COUNTDOWN || 0);
+          const linkMs = stages.LINK_READY || 0;
+          const totalMs = Date.now() - workerStart;
+          logger.log('TIMING', `[4KHDHub Link ${idx + 1}/${toResolve.length}] Total: ${totalMs}ms | Nav: ${navMs}ms | ExternalWait: ${waitMs}ms | LinkReady: ${linkMs}ms | State: ${resolution.state}`);
 
           let finalTitle = resolution.meta?.filename || resolution.meta?.title;
-          if (!finalTitle || finalTitle === item.title || finalTitle === 'Unknown Title') {
-            const hubMeta = await fetchHubCloudMetadata(resolution.destination);
-            if (hubMeta?.filename) {
-              finalTitle = hubMeta.filename;
+          if (resolution.success && resolution.destination && isHubCloudDriveUrl(resolution.destination)) {
+            if (!finalTitle || finalTitle === item.title || finalTitle === 'Unknown Title') {
+              const hubMeta = await fetchHubCloudMetadata(resolution.destination);
+              if (hubMeta?.filename) finalTitle = hubMeta.filename;
             }
           }
           finalTitle = finalTitle || item.filename || item.title;
 
+          return { item, resolution, finalTitle };
+        }),
+        concurrencyLimit,
+        { headless: true }
+      );
+
+      logger.log('TIMING', `[4KHDHub] Batch complete: ${toResolve.length} link(s) | Wall: ${Date.now() - batchStart}ms | BrowserLaunch: ${batchTimings.browserStartMs}ms | Concurrency: ${concurrencyLimit}`);
+
+      let resolvedCount = 0;
+      for (const result of resolutionResults) {
+        if (result instanceof Error) {
+          logger.warning(`[4KHDHub] Worker threw unexpected error: ${result.message}`);
+          continue;
+        }
+        const { item, resolution, finalTitle } = result;
+        if (resolution.success && resolution.destination && isHubCloudDriveUrl(resolution.destination)) {
+          resolvedCount++;
           await scrapedLinksRepo.saveLink({
             sourceUrl: job.url,
             sourceDomain: new URL(job.url).hostname,
@@ -385,9 +450,10 @@ export class JobQueue {
             status: SCRAPED_STATUS.RESOLVED,
           });
         } else {
-          logger.warning(`Mediator resolution skipped/failed for "${item.title}" (${resolution.state})`);
+          logger.warning(`[4KHDHub] Mediator resolution skipped/failed for "${item.title}" (${resolution.state})`);
         }
       }
+
 
       await jobsRepo.updateJob(jobId, {
         status: SCRAPED_STATUS.RESOLVED,

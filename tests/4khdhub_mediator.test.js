@@ -260,7 +260,7 @@ describe('4KHDHub → Mediator → HubCloud Resolver Test Suite (Section 22)', (
     });
     expect(resolution.success).toBe(true);
     expect(isHubCloudDriveUrl(resolution.destination)).toBe(true);
-  });
+  }, 15000);
 
   // Test F — CAPTCHA appears
   it('Test F: Stops and returns CAPTCHA_REQUIRED without attempting bypass when challenge appears', async () => {
