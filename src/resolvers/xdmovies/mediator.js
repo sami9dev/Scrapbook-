@@ -110,9 +110,14 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
       } catch {}
     });
 
-    // Abort noisy ad scripts
+    // Abort noisy ad scripts and non-essential assets
     await context.route('**/*', (route) => {
-      const u = route.request().url();
+      const req = route.request();
+      const resourceType = req.resourceType();
+      if (['image', 'font', 'media'].includes(resourceType)) {
+        return route.abort();
+      }
+      const u = req.url();
       if (/admaven|propellerads|popads|alwingulla|adsterra|monetag|google-analytics|crn77\.com|dd133\.com/i.test(u)) {
         return route.abort();
       }

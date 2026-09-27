@@ -83,9 +83,14 @@ export async function resolveMediatorFlow(mediatorUrl, options = {}) {
       } catch {}
     });
 
-    // Prevent aggressive ad networks from hijacking navigation or clicks
+    // Prevent aggressive ad networks from hijacking navigation or clicks, and abort non-essential assets
     await context.route('**/*', (route) => {
-      const reqUrl = route.request().url();
+      const req = route.request();
+      const resourceType = req.resourceType();
+      if (['image', 'font', 'media'].includes(resourceType)) {
+        return route.abort();
+      }
+      const reqUrl = req.url();
       if (/admaven|propellerads|popads|alwingulla|adsterra|monetag|google-analytics/i.test(reqUrl)) {
         return route.abort();
       }
