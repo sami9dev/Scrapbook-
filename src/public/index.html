@@ -520,9 +520,10 @@
       <form id="scrapeForm" class="input-group">
         <input type="text" id="targetUrl" placeholder="https://top.xdmovies.wtf/series/... or https://4khdhub.one/..." required />
         <select id="targetScope" class="quality-select" title="Content Type / Scope">
-          <option value="episode" selected>🎬 Individual Episodes (Single EP's)</option>
+          <option value="all" selected>⚡ All Content</option>
+          <option value="episode">🎬 Individual Episodes (Single EP's)</option>
           <option value="pack">📦 Complete Season (Zip/Pack)</option>
-          <option value="all">📁 All Content</option>
+          <option value="movie">🎬 Movie Releases</option>
         </select>
         <select id="targetQuality" class="quality-select" title="Target Quality">
           <option value="all">⚡ All Qualities</option>
@@ -533,6 +534,7 @@
         </select>
         <button type="submit" id="submitBtn">Start Scrape</button>
       </form>
+      <div id="urlDetectionBadge" style="display: none; align-items: center; gap: 8px; font-size: 0.85rem; padding: 8px 12px; border-radius: 6px; margin-top: 8px; font-weight: 500;"></div>
       <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; flex-wrap: wrap; gap: 8px;">
         <div id="submitFeedback" style="font-size: 0.85rem;"></div>
         <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: #94a3b8; cursor: pointer; user-select: none;">
@@ -550,9 +552,10 @@
           <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <input type="text" id="rawHtmlSourceUrl" placeholder="Source URL (e.g. https://top.xdmovies.wtf/series/... or https://4khdhub.one/...)" style="flex: 1; min-width: 260px; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #f3f4f6; font-size: 0.85rem;" />
             <select id="rawHtmlScope" class="quality-select" style="min-width: 140px; padding: 6px 10px; font-size: 0.85rem;">
-              <option value="episode" selected>🎬 Single EP's</option>
+              <option value="all" selected>📁 All Content</option>
+              <option value="episode">🎬 Single EP's</option>
               <option value="pack">📦 Zip / Pack</option>
-              <option value="all">📁 All Content</option>
+              <option value="movie">🎬 Movie</option>
             </select>
             <select id="rawHtmlQuality" class="quality-select" style="min-width: 130px; padding: 6px 10px; font-size: 0.85rem;">
               <option value="all">⚡ All Qualities</option>
@@ -597,11 +600,11 @@
       <!-- High-visibility Scope Switcher Tabs -->
       <div class="scope-tabs-bar" id="scopeTabsBar">
         <button type="button" class="scope-tab active" data-scope="episode" id="tabEpisode">
-          <span>🎬 Download Individual Episodes / Movies</span>
+          <span id="tabEpisodeLabel">🎬 Individual Episodes</span>
           <span class="tab-counter" id="tabCountEpisodes">0</span>
         </button>
         <button type="button" class="scope-tab" data-scope="pack" id="tabPack">
-          <span>📦 Complete Season (Zip/Pack)</span>
+          <span id="tabPackLabel">📦 Complete Season (Zip/Pack)</span>
           <span class="tab-counter" id="tabCountPacks">0</span>
         </button>
         <button type="button" class="scope-tab" data-scope="all" id="tabAll">
@@ -774,6 +777,46 @@
       return l.includes(normT);
     }
 
+    function checkUrlContent(url) {
+      const badge = document.getElementById('urlDetectionBadge');
+      if (!badge) return;
+      if (!url) {
+        badge.style.display = 'none';
+        return;
+      }
+      const isMovie = /-movie(?:-\d+)?\/?$/i.test(url) || /-movie-/i.test(url) || /\/movies?\//i.test(url) || /\/movie\b/i.test(url);
+      const isSeries = /-series(?:-\d+)?\/?$/i.test(url) || /-series-/i.test(url) || /\/series\b/i.test(url) || /\/tv-shows?\//i.test(url) || /\/tv-series\//i.test(url);
+
+      if (isMovie) {
+        badge.style.display = 'flex';
+        badge.style.background = 'rgba(245, 158, 11, 0.15)';
+        badge.style.border = '1px solid rgba(245, 158, 11, 0.35)';
+        badge.style.color = '#fbbf24';
+        badge.innerHTML = `🎬 <strong>Movie Detected:</strong> URL contains <code>-movie-</code>. Standalone movie releases across all qualities will be extracted.`;
+        if (targetScopeSelect) targetScopeSelect.value = 'movie';
+      } else if (isSeries) {
+        badge.style.display = 'flex';
+        badge.style.background = 'rgba(59, 130, 246, 0.15)';
+        badge.style.border = '1px solid rgba(59, 130, 246, 0.35)';
+        badge.style.color = '#60a5fa';
+        badge.innerHTML = `📺 <strong>TV Series Detected:</strong> URL contains <code>-series-</code>. Both complete season zip packs and individual episodes will be extracted.`;
+        if (targetScopeSelect && targetScopeSelect.value === 'movie') {
+          targetScopeSelect.value = 'all';
+        }
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    if (targetUrlInput) {
+      targetUrlInput.addEventListener('input', (e) => checkUrlContent(e.target.value.trim()));
+      targetUrlInput.addEventListener('paste', () => setTimeout(() => checkUrlContent(targetUrlInput.value.trim()), 50));
+    }
+    if (rawHtmlSourceUrl) {
+      rawHtmlSourceUrl.addEventListener('input', (e) => checkUrlContent(e.target.value.trim()));
+      rawHtmlSourceUrl.addEventListener('paste', () => setTimeout(() => checkUrlContent(rawHtmlSourceUrl.value.trim()), 50));
+    }
+
     function updateTabCounts() {
       let epCount = 0;
       let packCount = 0;
@@ -791,27 +834,47 @@
         allCount++;
       });
 
-      // If standalone movies exist without TV episodes, include them in the primary release tab
-      if (movieCount > 0 && epCount === 0) {
-        epCount = movieCount;
-      }
-
       const epBadge = document.getElementById('tabCountEpisodes');
       const packBadge = document.getElementById('tabCountPacks');
       const allBadge = document.getElementById('tabCountAll');
+      const epLabel = document.getElementById('tabEpisodeLabel');
+      const packTab = document.getElementById('tabPack');
 
-      if (epBadge) epBadge.textContent = epCount;
-      if (packBadge) packBadge.textContent = packCount;
-      if (allBadge) allBadge.textContent = allCount;
+      const isMovie = movieCount > 0 && epCount === 0;
 
-      // Smart auto-selection if user hasn't explicitly clicked a tab
-      if (!userHasManuallySelectedScope) {
-        if (currentScopeFilter === 'episode' && epCount === 0 && packCount > 0) {
-          setActiveScopeTab('pack', false);
-        } else if (currentScopeFilter === 'pack' && packCount === 0 && epCount > 0) {
+      if (isMovie) {
+        if (epLabel) epLabel.textContent = '🎬 Movie Releases';
+        if (epBadge) epBadge.textContent = movieCount;
+        if (packTab) {
+          packTab.style.opacity = '0.35';
+          packTab.title = 'Standalone movies do not have season zip packs';
+        }
+        if (packBadge) packBadge.textContent = '0';
+        if (allBadge) allBadge.textContent = allCount;
+
+        // If user was on 'pack' tab, switch to 'episode' (which acts as movie tab)
+        if (currentScopeFilter === 'pack') {
           setActiveScopeTab('episode', false);
-        } else if (currentScopeFilter !== 'all' && epCount === 0 && packCount === 0 && allCount > 0) {
-          setActiveScopeTab('all', false);
+        }
+      } else {
+        if (epLabel) epLabel.textContent = '🎬 Individual Episodes (Single EP\'s)';
+        if (epBadge) epBadge.textContent = epCount;
+        if (packTab) {
+          packTab.style.opacity = '1';
+          packTab.title = '';
+        }
+        if (packBadge) packBadge.textContent = packCount;
+        if (allBadge) allBadge.textContent = allCount;
+
+        // Auto-selection if user hasn't explicitly clicked a tab
+        if (!userHasManuallySelectedScope) {
+          if (currentScopeFilter === 'episode' && epCount === 0 && packCount > 0) {
+            setActiveScopeTab('pack', false);
+          } else if (currentScopeFilter === 'pack' && packCount === 0 && epCount > 0) {
+            setActiveScopeTab('episode', false);
+          } else if (currentScopeFilter !== 'all' && epCount === 0 && packCount === 0 && allCount > 0) {
+            setActiveScopeTab('all', false);
+          }
         }
       }
     }
@@ -821,15 +884,17 @@
       const seasonFilterGroup = document.getElementById('seasonFilterGroup');
       if (!seasonPillsContainer) return;
 
-      // If scope is 'pack', season filtering on packs is usually not needed or optional
-      if (currentScopeFilter === 'pack') {
+      const isMovie = allLinks.length > 0 && allLinks.every((l) => (l.scope || 'movie') === 'movie');
+
+      // If scope is 'pack' or movie, season filtering is not applicable
+      if (currentScopeFilter === 'pack' || isMovie) {
         if (seasonFilterGroup) seasonFilterGroup.style.display = 'none';
         return;
       }
 
       // Extract unique seasons from records belonging to active scope
       const relevantLinks = (allLinks || []).filter((l) => {
-        const scope = l.scope || (l.episode !== null && l.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
+        const scope = l.scope || (l.episode !== null && l.episode !== undefined ? 'episode' : (l.season !== null && l.season !== undefined ? 'pack' : 'movie'));
         if (currentScopeFilter === 'episode' && scope !== 'episode') return false;
         return l.season !== null && l.season !== undefined;
       });
@@ -872,6 +937,7 @@
         const isMovie = scope === 'movie';
         // Standalone movie releases are displayed on the primary episode/release tab and all content tab
         if (currentScopeFilter === 'episode' && scope !== 'episode' && !isMovie) return false;
+        if (currentScopeFilter === 'movie' && !isMovie) return false;
         if (currentScopeFilter === 'pack' && scope !== 'pack') return false;
 
         // 3. Season Filter
@@ -890,17 +956,22 @@
 
     function renderTable() {
       const visibleLinks = getFilteredLinks();
+      const isMovie = (allLinks || []).length > 0 && (allLinks || []).every((l) => (l.scope || 'movie') === 'movie');
 
       // Update counter indicator
       if (filteredCountInfo) {
-        const scopeName = currentScopeFilter === 'episode' ? 'Individual Episodes' : (currentScopeFilter === 'pack' ? 'Season Packs' : 'Records');
+        let scopeName = 'Records';
+        if (currentScopeFilter === 'episode') scopeName = isMovie ? 'Movie Releases' : 'Individual Episodes';
+        else if (currentScopeFilter === 'movie') scopeName = 'Movie Releases';
+        else if (currentScopeFilter === 'pack') scopeName = 'Complete Season Packs';
         filteredCountInfo.textContent = `Showing ${visibleLinks.length} ${scopeName}`;
       }
 
       if (visibleLinks.length === 0) {
         let msg = 'No records found';
-        if (currentScopeFilter === 'episode') msg = 'No Individual Episodes found';
-        else if (currentScopeFilter === 'pack') msg = 'No Complete Season (Zip/Pack) records found';
+        if (currentScopeFilter === 'episode') msg = isMovie ? 'No Movie Releases found' : 'No Individual Episodes found';
+        else if (currentScopeFilter === 'pack') msg = isMovie ? 'No Season Packs (Zip) exist for movies' : 'No Complete Season (Zip/Pack) records found';
+        else if (currentScopeFilter === 'movie') msg = 'No Movie Releases found';
 
         const filters = [];
         if (currentSeasonFilter !== 'all') filters.push(`Season ${currentSeasonFilter}`);
@@ -1147,8 +1218,13 @@
       const url = targetUrlInput.value.trim();
       const autoReset = autoResetCheckbox ? autoResetCheckbox.checked : true;
       const quality = targetQualitySelect ? targetQualitySelect.value : 'all';
-      const scope = targetScopeSelect ? targetScopeSelect.value : 'episode';
+      let scope = targetScopeSelect ? targetScopeSelect.value : 'all';
       if (!url) return;
+
+      const isMovieUrl = /-movie(?:-\d+)?\/?$/i.test(url) || /-movie-/i.test(url) || /\/movies?\//i.test(url) || /\/movie\b/i.test(url);
+      if (isMovieUrl && scope === 'episode') {
+        scope = 'movie';
+      }
 
       submitBtn.disabled = true;
       submitFeedback.textContent = `Submitting scrape job (Scope: ${scope}, Quality: ${quality})...`;
@@ -1166,7 +1242,10 @@
           submitFeedback.textContent = `Job enqueued successfully (ID: ${data.jobId}). Processing...`;
           submitFeedback.style.color = 'var(--status-resolved)';
           targetUrlInput.value = '';
-          setActiveScopeTab(scope, true);
+          const badge = document.getElementById('urlDetectionBadge');
+          if (badge) badge.style.display = 'none';
+          userHasManuallySelectedScope = false;
+          setActiveScopeTab('episode', false);
           setActiveQualityPill(quality);
           setTimeout(() => {
             loadStats();

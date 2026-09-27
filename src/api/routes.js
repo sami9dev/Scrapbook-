@@ -324,17 +324,19 @@ router.post('/parse-html', async (req, res) => {
 
       const extracted = extract4KHDHubLinks(html, sourceUrl);
       const allExtractedLinks = extracted.links;
+      const isMoviePage = extracted.contentType === 'movie' || (allExtractedLinks.length > 0 && allExtractedLinks.every((l) => l.scope === 'movie'));
 
       const savedRecords = [];
       for (const item of allExtractedLinks) {
         const title = item.filename || item.title || '4KHDHub Content';
+        const itemScope = item.scope || (isMoviePage ? 'movie' : (item.episode !== null && item.episode !== undefined ? 'episode' : (item.season !== null && item.season !== undefined ? 'pack' : 'movie')));
         const rec = {
           sourceUrl,
           sourceDomain: sourceUrl && sourceUrl.startsWith('http') ? new URL(sourceUrl).hostname : '4khdhub.one',
           title,
-          scope: item.scope || (item.episode !== null && item.episode !== undefined ? 'episode' : (item.season !== null && item.season !== undefined ? 'pack' : 'movie')),
-          season: item.season,
-          episode: item.episode,
+          scope: itemScope,
+          season: isMoviePage ? null : item.season,
+          episode: isMoviePage ? null : item.episode,
           quality: item.quality,
           provider: 'HUBCLOUD',
           mediatorUrl: item.mediatorUrl,
@@ -352,8 +354,13 @@ router.post('/parse-html', async (req, res) => {
         if (filtered.length > 0) toResolve = filtered;
       }
       if (scope && scope !== 'all') {
-        const filtered = toResolve.filter((l) => l.scope === scope);
-        if (filtered.length > 0) toResolve = filtered;
+        if (isMoviePage) {
+          const filtered = toResolve.filter((l) => l.scope === 'movie');
+          if (filtered.length > 0) toResolve = filtered;
+        } else {
+          const filtered = toResolve.filter((l) => l.scope === scope);
+          if (filtered.length > 0) toResolve = filtered;
+        }
       }
 
 
@@ -392,9 +399,9 @@ router.post('/parse-html', async (req, res) => {
                   sourceUrl,
                   sourceDomain: sourceUrl && sourceUrl.startsWith('http') ? new URL(sourceUrl).hostname : '4khdhub.one',
                   title: finalTitle,
-                  scope: item.scope || (item.episode !== null && item.episode !== undefined ? 'episode' : (item.season !== null && item.season !== undefined ? 'pack' : 'movie')),
-                  season: item.season,
-                  episode: item.episode,
+                  scope: item.scope || (isMoviePage ? 'movie' : (item.episode !== null && item.episode !== undefined ? 'episode' : (item.season !== null && item.season !== undefined ? 'pack' : 'movie'))),
+                  season: isMoviePage ? null : item.season,
+                  episode: isMoviePage ? null : item.episode,
                   quality: item.quality,
                   provider: 'HUBCLOUD',
                   providerUrl: resolution.destination,
@@ -421,7 +428,7 @@ router.post('/parse-html', async (req, res) => {
         success: true,
         count: savedRecords.length,
         records: savedRecords,
-        activeScope: scope,
+        activeScope: isMoviePage ? 'movie' : scope,
         activeQuality: quality,
       });
     }

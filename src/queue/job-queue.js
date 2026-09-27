@@ -377,17 +377,19 @@ export class JobQueue {
 
       const extracted = extract4KHDHubLinks(sourceFetch.body, sourceFetch.finalUrl || job.url);
       const allExtractedLinks = extracted.links;
+      const isMoviePage = extracted.contentType === 'movie' || (allExtractedLinks.length > 0 && allExtractedLinks.every((l) => l.scope === 'movie'));
 
       // 1. Save ALL candidate links to database so that both Single Episodes and Complete Season Packs in ALL qualities are preserved
       for (const item of allExtractedLinks) {
         const title = item.filename || item.title || '4KHDHub Content';
+        const itemScope = item.scope || (isMoviePage ? 'movie' : (item.episode !== null && item.episode !== undefined ? 'episode' : (item.season !== null && item.season !== undefined ? 'pack' : 'movie')));
         await scrapedLinksRepo.saveLink({
           sourceUrl: job.url,
           sourceDomain: new URL(job.url).hostname,
           title,
-          scope: item.scope || (item.episode !== null && item.episode !== undefined ? 'episode' : (item.season !== null && item.season !== undefined ? 'pack' : 'movie')),
-          season: item.season,
-          episode: item.episode,
+          scope: itemScope,
+          season: isMoviePage ? null : item.season,
+          episode: isMoviePage ? null : item.episode,
           quality: item.quality,
           provider: 'HUBCLOUD',
           mediatorUrl: item.mediatorUrl,
@@ -403,11 +405,17 @@ export class JobQueue {
         if (filtered.length > 0) toResolve = filtered;
       }
       if (job.targetScope && job.targetScope !== 'all') {
-        const filtered = toResolve.filter((l) => l.scope === job.targetScope);
-        if (filtered.length > 0) toResolve = filtered;
+        if (isMoviePage) {
+          // A movie has standalone quality releases; resolve movie links without requiring user to change episode/pack dropdown
+          const filtered = toResolve.filter((l) => l.scope === 'movie');
+          if (filtered.length > 0) toResolve = filtered;
+        } else {
+          const filtered = toResolve.filter((l) => l.scope === job.targetScope);
+          if (filtered.length > 0) toResolve = filtered;
+        }
       }
 
-      logger.parsing(`Found ${allExtractedLinks.length} total link(s), resolving ${toResolve.length} candidate(s) for "${extracted.title}" (Scope: ${job.targetScope || 'all'}, Quality: ${job.targetQuality || 'all'})`);
+      logger.parsing(`Found ${allExtractedLinks.length} total link(s), resolving ${toResolve.length} candidate(s) for "${extracted.title}" (Content: ${isMoviePage ? 'Movie' : 'Series'}, Scope: ${job.targetScope || 'all'}, Quality: ${job.targetQuality || 'all'})`);
 
       const concurrencyLimit = config.mediatorConcurrency;
       const batchStart = Date.now();
@@ -463,9 +471,9 @@ export class JobQueue {
             sourceUrl: job.url,
             sourceDomain: new URL(job.url).hostname,
             title: finalTitle,
-            scope: item.scope || (item.episode !== null && item.episode !== undefined ? 'episode' : (item.season !== null && item.season !== undefined ? 'pack' : 'movie')),
-            season: item.season,
-            episode: item.episode,
+            scope: item.scope || (isMoviePage ? 'movie' : (item.episode !== null && item.episode !== undefined ? 'episode' : (item.season !== null && item.season !== undefined ? 'pack' : 'movie'))),
+            season: isMoviePage ? null : item.season,
+            episode: isMoviePage ? null : item.episode,
             quality: item.quality,
             provider: 'HUBCLOUD',
             providerUrl: resolution.destination,

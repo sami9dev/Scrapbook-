@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'http';
 import { extract4KHDHubLinks } from '../src/providers/4khdhub/extractor.js';
+import { detectContentTypeFromUrl } from '../src/providers/4khdhub/parser.js';
 import { isHubCloudDriveUrl, extractHubCloudDriveId, fetchHubCloudMetadata } from '../src/providers/hubcloud/validator.js';
 import { resolveMediatorFlow } from '../src/resolvers/mediator/browser.js';
 import { ResolverService } from '../src/services/resolverService.js';
@@ -307,5 +308,72 @@ describe('4KHDHub → Mediator → HubCloud Resolver Test Suite (Section 22)', (
     expect(await fetchHubCloudMetadata('https://example.com/movie')).toBe(null);
     expect(await fetchHubCloudMetadata('https://hubcloud.ist/invalid-path')).toBe(null);
     expect(await fetchHubCloudMetadata(null)).toBe(null);
+  });
+
+  it('detectContentTypeFromUrl correctly identifies movies vs series from URL semantics', () => {
+    expect(detectContentTypeFromUrl('https://4khdhub.one/unabomber-movie-8202/')).toBe('movie');
+    expect(detectContentTypeFromUrl('https://4khdhub.one/unabomber-movie-8202')).toBe('movie');
+    expect(detectContentTypeFromUrl('https://4khdhub.one/mobland-series-98/')).toBe('series');
+    expect(detectContentTypeFromUrl('https://4khdhub.one/mobland-series-98')).toBe('series');
+    expect(detectContentTypeFromUrl('https://top.xdmovies.wtf/movies/avatar-3/')).toBe('movie');
+    expect(detectContentTypeFromUrl('https://top.xdmovies.wtf/series/loki-season-2/')).toBe('series');
+    expect(detectContentTypeFromUrl('https://example.com/random-page')).toBe(null);
+  });
+
+  it('Movie URL forces scope to movie and strips season/episode numbers', () => {
+    const syntheticMovieHtml = `
+      <h1>UNABOMBER (2026)</h1>
+      <div id="content-file-1">
+        <h4 class="file-title">UNABOMBER.2026.2160p.REPACK.NF.WEB-DL.MULTi.DDP5.1.Atmos.DV.HDR.H.265-4kHdHub.Com.mkv</h4>
+        <a href="https://example.com/med1">Download HubCloud</a>
+      </div>
+      <div id="content-file-2">
+        <h4 class="file-title">UNABOMBER.2026.1080p.NF.WEB-DL.Multi.DDP5.1.Atmos.H.264-4kHdHub.Com.mkv</h4>
+        <a href="https://example.com/med2">Download HubCloud</a>
+      </div>
+    `;
+
+    const result = extract4KHDHubLinks(syntheticMovieHtml, 'https://4khdhub.one/unabomber-movie-8202/');
+    expect(result.contentType).toBe('movie');
+    expect(result.links.length).toBe(2);
+    expect(result.links[0].scope).toBe('movie');
+    expect(result.links[0].season).toBe(null);
+    expect(result.links[0].episode).toBe(null);
+    expect(result.links[1].scope).toBe('movie');
+    expect(result.links[1].season).toBe(null);
+    expect(result.links[1].episode).toBe(null);
+  });
+
+  it('Series URL properly separates complete season packs from individual episodes', () => {
+    const syntheticSeriesHtml = `
+      <h1>MobLand (Season 1)</h1>
+      <div id="complete-pack">
+        <h4 class="file-title">MobLand.S01.Complete.Zip.Pack.1080p</h4>
+        <a href="https://example.com/med-pack">Download HubCloud</a>
+      </div>
+      <div id="episodes">
+        <div class="episode-download-item">
+          <span class="badge">Episode-01</span>
+          <h4 class="file-title">MobLand.S01E01.1080p</h4>
+          <a href="https://example.com/med-ep1">Download HubCloud</a>
+        </div>
+      </div>
+    `;
+
+    const result = extract4KHDHubLinks(syntheticSeriesHtml, 'https://4khdhub.one/mobland-series-98/');
+    expect(result.contentType).toBe('series');
+    expect(result.links.length).toBe(2);
+
+    const pack = result.links.find((l) => l.scope === 'pack');
+    const ep = result.links.find((l) => l.scope === 'episode');
+
+    expect(pack).toBeDefined();
+    expect(pack.scope).toBe('pack');
+    expect(pack.season).toBe(1);
+
+    expect(ep).toBeDefined();
+    expect(ep.scope).toBe('episode');
+    expect(ep.season).toBe(1);
+    expect(ep.episode).toBe(1);
   });
 });

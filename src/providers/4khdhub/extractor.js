@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { extractPageTitle, inferContextFromDOM } from './parser.js';
+import { extractPageTitle, inferContextFromDOM, detectContentTypeFromUrl } from './parser.js';
 import { HUBCLOUD_BUTTON_PATTERNS } from './selectors.js';
 
 /**
@@ -11,8 +11,11 @@ import { HUBCLOUD_BUTTON_PATTERNS } from './selectors.js';
  * @returns {{
  *   title: string,
  *   sourceUrl: string,
+ *   contentType: 'movie'|'series'|'unknown',
  *   links: Array<{
  *     title: string,
+ *     filename: string,
+ *     scope: 'movie'|'episode'|'pack'|'all',
  *     season: number|null,
  *     episode: number|null,
  *     quality: string,
@@ -25,7 +28,7 @@ import { HUBCLOUD_BUTTON_PATTERNS } from './selectors.js';
  */
 export function extract4KHDHubLinks(html, sourceUrl = '') {
   if (!html || typeof html !== 'string') {
-    return { title: 'Unknown Title', sourceUrl, links: [] };
+    return { title: 'Unknown Title', sourceUrl, contentType: 'unknown', links: [] };
   }
 
   const $ = cheerio.load(html);
@@ -70,8 +73,8 @@ export function extract4KHDHubLinks(html, sourceUrl = '') {
     }
     seenUrls.add(mediatorUrl);
 
-    // Invert context from surrounding DOM
-    const context = inferContextFromDOM($el, $);
+    // Invert context from surrounding DOM with sourceUrl awareness
+    const context = inferContextFromDOM($el, $, sourceUrl);
 
     links.push({
       title,
@@ -87,9 +90,12 @@ export function extract4KHDHubLinks(html, sourceUrl = '') {
     });
   });
 
+  const detectedType = detectContentTypeFromUrl(sourceUrl) || (links.some((l) => l.scope === 'episode' || l.scope === 'pack') ? 'series' : (links.some((l) => l.scope === 'movie') ? 'movie' : 'unknown'));
+
   return {
     title,
     sourceUrl,
+    contentType: detectedType,
     links,
   };
 }
