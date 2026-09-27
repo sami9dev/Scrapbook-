@@ -168,9 +168,13 @@ export function inferContextFromDOM($el, $) {
   }
 
   // Detect whether it's an individual episode, a complete season pack, or a movie
-  const isEpisode = $el.closest('#episodes, .episode-download-item, .episode-item, .episode-links').length > 0;
-  const isPack = $el.closest('#complete-pack, .download-header, [data-file-id], [id*="content-file"]').length > 0;
-  const scope = isEpisode ? 'episode' : (isPack ? 'pack' : 'movie');
+  const isEpisode = episode !== null || $el.closest('#episodes, .episode-download-item, .episode-item, .episode-links').length > 0;
+  const hasPackKeyword = (txt) => Boolean(txt && !/repack/i.test(txt) && /\b(zip|pack|season\s*pack|complete\s*season)\b/i.test(txt));
+  const isExplicitPack = $el.closest('#complete-pack, .season-pack').length > 0
+    || hasPackKeyword(ownText)
+    || hasPackKeyword(filename)
+    || (season !== null && episode === null);
+  const scope = isEpisode ? 'episode' : (isExplicitPack ? 'pack' : 'movie');
 
   // If filename is found, enrich missing quality, season, and episode from filename
   if (filename) {

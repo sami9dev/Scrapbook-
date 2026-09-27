@@ -19,6 +19,23 @@ export class JobQueue {
     this.concurrency = options.concurrency ?? config.concurrency;
     this.activeWorkers = 0;
     this.queue = [];
+    this.cancelledJobs = new Set();
+    this.activeJobIds = new Set();
+  }
+
+  /**
+   * Cancels all queued and active jobs immediately.
+   */
+  cancelAll() {
+    this.queue = [];
+    for (const id of this.activeJobIds) {
+      this.cancelledJobs.add(id);
+    }
+    logger.warning(`JobQueue: Cancelled all queued and active jobs (${this.cancelledJobs.size} total)`);
+  }
+
+  isCancelled(jobId) {
+    return this.cancelledJobs.has(jobId);
   }
 
   /**
@@ -49,7 +66,13 @@ export class JobQueue {
     }
 
     const jobId = this.queue.shift();
+    if (this.isCancelled(jobId)) {
+      this.cancelledJobs.delete(jobId);
+      return this.processNext();
+    }
+
     this.activeWorkers++;
+    this.activeJobIds.add(jobId);
 
     try {
       await this.executeJob(jobId);
@@ -57,6 +80,8 @@ export class JobQueue {
       logger.error(`Unhandled error processing job ${jobId}: ${err.message}`);
     } finally {
       this.activeWorkers--;
+      this.activeJobIds.delete(jobId);
+      this.cancelledJobs.delete(jobId);
       this.processNext();
     }
   }

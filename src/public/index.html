@@ -597,7 +597,7 @@
       <!-- High-visibility Scope Switcher Tabs -->
       <div class="scope-tabs-bar" id="scopeTabsBar">
         <button type="button" class="scope-tab active" data-scope="episode" id="tabEpisode">
-          <span>🎬 Download Individual Episodes</span>
+          <span>🎬 Download Individual Episodes / Movies</span>
           <span class="tab-counter" id="tabCountEpisodes">0</span>
         </button>
         <button type="button" class="scope-tab" data-scope="pack" id="tabPack">
@@ -778,6 +778,7 @@
       let epCount = 0;
       let packCount = 0;
       let allCount = 0;
+      let movieCount = 0;
 
       (allLinks || []).forEach((link) => {
         const url = link.providerUrl || '';
@@ -786,8 +787,14 @@
         const scope = link.scope || (link.episode !== null && link.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
         if (scope === 'episode') epCount++;
         else if (scope === 'pack') packCount++;
+        else if (scope === 'movie') movieCount++;
         allCount++;
       });
+
+      // If standalone movies exist without TV episodes, include them in the primary release tab
+      if (movieCount > 0 && epCount === 0) {
+        epCount = movieCount;
+      }
 
       const epBadge = document.getElementById('tabCountEpisodes');
       const packBadge = document.getElementById('tabCountPacks');
@@ -862,7 +869,9 @@
 
         // 2. Scope Container Filter
         const scope = link.scope || (link.episode !== null && link.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
-        if (currentScopeFilter === 'episode' && scope !== 'episode') return false;
+        const isMovie = scope === 'movie';
+        // Standalone movie releases are displayed on the primary episode/release tab and all content tab
+        if (currentScopeFilter === 'episode' && scope !== 'episode' && !isMovie) return false;
         if (currentScopeFilter === 'pack' && scope !== 'pack') return false;
 
         // 3. Season Filter

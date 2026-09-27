@@ -31,6 +31,7 @@ router.post('/scrape', async (req, res) => {
 
   try {
     if (reset || autoReset) {
+      jobQueue.cancelAll();
       await scrapedLinksRepo.clear();
       await jobsRepo.clear();
       logger.database('Auto-reset completed before enqueuing new scrape job.');
@@ -57,6 +58,7 @@ router.post('/scrape', async (req, res) => {
  */
 router.post('/reset', async (req, res) => {
   try {
+    jobQueue.cancelAll();
     const deletedLinks = await scrapedLinksRepo.clear();
     const deletedJobs = await jobsRepo.clear();
     logger.database(`Reset database: cleared ${deletedLinks.deletedCount || 0} links and ${deletedJobs.deletedCount || 0} jobs`);

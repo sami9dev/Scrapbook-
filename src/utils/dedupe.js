@@ -12,8 +12,14 @@ import crypto from 'node:crypto';
  */
 export function generateDedupeKey(item) {
   const normSource = (item.sourceUrl || '').trim().toLowerCase();
+  const normMediator = (item.mediatorUrl || '').trim().toLowerCase();
   const normProvider = (item.providerUrl || '').trim().toLowerCase();
   const normFileId = (item.fileId || '').trim();
+
+  // If mediator URL is known, it is the primary unique identifier across DISCOVERED and RESOLVED phases
+  if (normMediator) {
+    return `${normSource}::${normMediator}`;
+  }
 
   // If both provider and fileId are known, compound with them
   if (normProvider && normFileId) {
