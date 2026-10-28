@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { MongoClient } from 'mongodb';
 import { config } from '../config/config.js';
 import { logger } from '../logging/logger.js';
@@ -10,6 +12,21 @@ class InMemoryCollection {
     this.name = name;
     this.documents = [];
     this.indexes = [];
+    this.storageFile = path.resolve(process.cwd(), 'data', 'in_memory_' + name + '.json');
+    try {
+      if (fs.existsSync(this.storageFile)) {
+        const raw = fs.readFileSync(this.storageFile, 'utf8');
+        this.documents = JSON.parse(raw);
+      }
+    } catch (e) {}
+  }
+
+  _save() {
+    try {
+      const dir = path.dirname(this.storageFile);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(this.storageFile, JSON.stringify(this.documents, null, 2), 'utf8');
+    } catch (e) {}
   }
 
   async createIndex(keys, options = {}) {
@@ -42,6 +59,7 @@ class InMemoryCollection {
       updatedAt: doc.updatedAt || new Date(),
     };
     this.documents.push(newDoc);
+    this._save();
     return { acknowledged: true, insertedId: newDoc._id };
   }
 
@@ -105,6 +123,7 @@ class InMemoryCollection {
     if (update.$set) {
       Object.assign(doc, update.$set, { updatedAt: new Date() });
     }
+    this._save();
     return { matchedCount: 1, modifiedCount: 1 };
   }
 
@@ -118,6 +137,7 @@ class InMemoryCollection {
     this.documents = this.documents.filter((doc) => {
       return !Object.entries(query).every(([k, v]) => doc[k] === v);
     });
+    this._save();
     return { deletedCount: prev - this.documents.length };
   }
 }

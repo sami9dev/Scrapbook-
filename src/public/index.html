@@ -490,6 +490,126 @@
     .btn-quick-resolve:hover {
       background: #1d4ed8;
     }
+
+    /* Catalog & History Container Styles */
+    .catalog-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .catalog-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+      max-height: 75vh;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .catalog-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 10px;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    .catalog-card:hover {
+      border-color: #60a5fa;
+      transform: translateY(-2px);
+    }
+    .catalog-card.scraped {
+      border-color: rgba(16, 185, 129, 0.4);
+      background: rgba(16, 185, 129, 0.03);
+    }
+    .badge-netflix {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+    .badge-prime {
+      background: rgba(6, 182, 212, 0.15);
+      color: #06b6d4;
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+    .badge-custom {
+      background: rgba(168, 85, 247, 0.15);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+    .badge-cloudmoviez {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+    .badge-xdmovies {
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+    .btn-copy-card {
+      background: #10b981;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.15s ease;
+    }
+    .btn-copy-card:hover {
+      background: #059669;
+    }
+    .btn-scrape-card {
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.15s ease;
+    }
+    .btn-scrape-card:hover {
+      background: #1d4ed8;
+    }
+    .view-switch-btn.active {
+      background: var(--accent-blue) !important;
+      color: white !important;
+      border-color: var(--accent-blue) !important;
+    }
   </style>
 </head>
 <body>
@@ -513,12 +633,12 @@
 
     <!-- Scrape Submission Form -->
     <div class="submit-card">
-      <h3 style="font-size: 1rem; font-weight: 600;">Scrape Authorized URL</h3>
+      <h3 style="font-size: 1rem; font-weight: 600;">Scrape URL or Search by Title</h3>
       <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 2px;">
-        Enter a 4KHDHub, XDMovies, or CloudMovieZ URL to discover and resolve clean HubCloud / provider links.
+        Enter a CloudMoviez / 4KHDHub / XDMovies URL, or simply type a Movie/Series title (e.g. <code>Gajab Raat</code>, <code>The Uprising</code>, <code>Dridam</code>, <code>Inception</code>).
       </p>
       <form id="scrapeForm" class="input-group">
-        <input type="text" id="targetUrl" placeholder="https://top.xdmovies.wtf/series/... or https://4khdhub.one/..." required />
+        <input type="text" id="targetUrl" placeholder="Enter title (e.g. Gajab Raat, Dridam) or URL (https://huh.xdmovies.wtf/..., https://4khdhub.one/..., https://c1.cloudmoviez.shop/...)" required />
         <select id="targetScope" class="quality-select" title="Content Type / Scope">
           <option value="all" selected>⚡ All Content</option>
           <option value="episode">🎬 Individual Episodes (Single EP's)</option>
@@ -545,12 +665,12 @@
 
       <details style="margin-top: 14px; font-size: 0.85rem; color: var(--text-muted); border-top: 1px dashed var(--border-color); padding-top: 10px;">
         <summary style="cursor: pointer; font-weight: 500; color: #93c5fd; user-select: none;">
-          ⚡ Or Paste HTML Directly (Instant extraction without bot challenges or network delays)
+          ⚡ Or Paste HTML Directly (Instant extraction for XDMovies, 4KHDHub, CloudMoviez, UNiTYhub)
         </summary>
         <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
           <textarea id="rawHtmlTextarea" rows="4" style="width: 100%; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; color: #f3f4f6; font-family: monospace; font-size: 0.8rem; padding: 8px; resize: vertical;" placeholder="Paste raw page HTML here..."></textarea>
           <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-            <input type="text" id="rawHtmlSourceUrl" placeholder="Source URL (e.g. https://top.xdmovies.wtf/series/... or https://4khdhub.one/...)" style="flex: 1; min-width: 260px; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #f3f4f6; font-size: 0.85rem;" />
+            <input type="text" id="rawHtmlSourceUrl" placeholder="Source URL (e.g. https://huh.xdmovies.wtf/movies/... or https://4khdhub.one/...)" style="flex: 1; min-width: 260px; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #f3f4f6; font-size: 0.85rem;" />
             <select id="rawHtmlScope" class="quality-select" style="min-width: 140px; padding: 6px 10px; font-size: 0.85rem;">
               <option value="all" selected>📁 All Content</option>
               <option value="episode">🎬 Single EP's</option>
@@ -569,6 +689,54 @@
           <div id="rawHtmlFeedback" style="font-size: 0.8rem;"></div>
         </div>
       </details>
+    </div>
+
+    <!-- Full Website & Pagination Crawler Widget -->
+    <div class="submit-card" style="margin-top: 14px; border-left: 4px solid #10b981;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div>
+          <h3 style="font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+            🌐 Full Website & Pagination Crawler
+            <span id="crawlerBadge" class="badge-pill" style="background: rgba(100, 116, 139, 0.2); color: #94a3b8;">IDLE</span>
+          </h3>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 2px;">
+            Crawl XDMovies or 4KHDHub page-by-page across all Movies and Series. Automatically discovers posts and resolves download links into history.
+          </p>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <select id="crawlerTargetSite" class="quality-select" style="min-width: 175px; padding: 7px 10px; font-size: 0.82rem; background: var(--bg-base); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 6px;">
+            <option value="https://huh.xdmovies.wtf" selected>⚡ XDMovies (HubCloud)</option>
+            <option value="https://4khdhub.one">⚡ 4KHDHub (HubCloud)</option>
+          </select>
+          <button type="button" id="btnCrawl5" style="background: #10b981; color: white; border: none; border-radius: 6px; padding: 7px 14px; font-weight: 600; font-size: 0.82rem; cursor: pointer;">
+            ⚡ Crawl Latest 5 Pages
+          </button>
+          <button type="button" id="btnCrawl10" style="background: #2563eb; color: white; border: none; border-radius: 6px; padding: 7px 14px; font-weight: 600; font-size: 0.82rem; cursor: pointer;">
+            🚀 Crawl 10 Pages
+          </button>
+          <button type="button" id="btnCrawlContinuous" style="background: #7c3aed; color: white; border: none; border-radius: 6px; padding: 7px 14px; font-weight: 600; font-size: 0.82rem; cursor: pointer;">
+            🌍 Full Site Crawl
+          </button>
+          <button type="button" id="btnCrawlerPause" style="display: none; background: #d97706; color: white; border: none; border-radius: 6px; padding: 7px 12px; font-weight: 600; font-size: 0.82rem; cursor: pointer;">
+            ⏸ Pause
+          </button>
+          <button type="button" id="btnCrawlerResume" style="display: none; background: #059669; color: white; border: none; border-radius: 6px; padding: 7px 12px; font-weight: 600; font-size: 0.82rem; cursor: pointer;">
+            ▶ Resume
+          </button>
+          <button type="button" id="btnCrawlerStop" style="display: none; background: #ef4444; color: white; border: none; border-radius: 6px; padding: 7px 12px; font-weight: 600; font-size: 0.82rem; cursor: pointer;">
+            ⏹ Stop
+          </button>
+        </div>
+      </div>
+      <div id="crawlerStatusBar" style="display: none; margin-top: 12px; padding: 10px 14px; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-color); font-size: 0.85rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span id="crawlerStatusText" style="color: #60a5fa; font-weight: 500;">Crawling page 1...</span>
+          <span id="crawlerMetricsText" style="color: var(--text-muted); font-size: 0.8rem;">Posts Found: 0</span>
+        </div>
+        <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
+          <div id="crawlerProgressBar" style="width: 0%; height: 100%; background: #10b981; transition: width 0.3s ease;"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Stats Dashboard -->
@@ -595,83 +763,173 @@
       </div>
     </div>
 
-    <!-- Container Section with Scope Switcher Tabs -->
-    <div class="table-container-card">
-      <!-- High-visibility Scope Switcher Tabs -->
-      <div class="scope-tabs-bar" id="scopeTabsBar">
-        <button type="button" class="scope-tab active" data-scope="episode" id="tabEpisode">
-          <span id="tabEpisodeLabel">🎬 Individual Episodes</span>
-          <span class="tab-counter" id="tabCountEpisodes">0</span>
-        </button>
-        <button type="button" class="scope-tab" data-scope="pack" id="tabPack">
-          <span id="tabPackLabel">📦 Complete Season (Zip/Pack)</span>
-          <span class="tab-counter" id="tabCountPacks">0</span>
-        </button>
-        <button type="button" class="scope-tab" data-scope="all" id="tabAll">
-          <span>⚡ All Content</span>
-          <span class="tab-counter" id="tabCountAll">0</span>
-        </button>
-      </div>
+    <!-- Master View Switcher -->
+    <div style="display: flex; gap: 10px; margin-bottom: 18px; border-bottom: 2px solid var(--border-color); padding-bottom: 12px; flex-wrap: wrap; align-items: center;">
+      <button type="button" id="btnViewTable" class="view-switch-btn active" style="background: var(--accent-blue); color: white; border: none; border-radius: 8px; padding: 10px 18px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+        ⚡ Scraped Links Table (<span id="viewTableLinkCount">0</span>)
+      </button>
+      <button type="button" id="btnViewCatalog" class="view-switch-btn" style="background: var(--bg-elevated); color: var(--text-muted); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 18px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+        📚 Movies & Series History Container (<span id="viewCatalogCount">479</span>)
+      </button>
+      <button type="button" id="btnOpenBatchModal" style="background: #059669; color: white; border: none; border-radius: 8px; padding: 10px 18px; font-weight: 600; cursor: pointer; margin-left: auto; display: flex; align-items: center; gap: 6px;">
+        ➕ Batch Scrape Titles
+      </button>
+    </div>
 
-      <!-- Filter Toolbar -->
-      <div class="scope-filter-toolbar">
-        <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
-          <!-- Season Filter Pills -->
-          <div class="filter-group" id="seasonFilterGroup">
-            <span class="filter-label">Season:</span>
-            <div class="filter-pills" id="seasonFilterPills">
-              <button type="button" class="filter-pill active" data-season="all">All Seasons</button>
+    <!-- View 1: Scraped Links Table View -->
+    <div id="viewTableSection">
+      <div class="table-container-card">
+        <!-- High-visibility Scope Switcher Tabs -->
+        <div class="scope-tabs-bar" id="scopeTabsBar">
+          <button type="button" class="scope-tab" data-scope="all" id="tabAll">
+            <span>⚡ All Content</span>
+            <span class="tab-counter" id="tabCountAll">0</span>
+          </button>
+          <button type="button" class="scope-tab" data-scope="movie" id="tabMovie">
+            <span>🎬 Movies</span>
+            <span class="tab-counter" id="tabCountMovies">0</span>
+          </button>
+          <button type="button" class="scope-tab active" data-scope="episode" id="tabEpisode">
+            <span id="tabEpisodeLabel">📺 Individual Episodes</span>
+            <span class="tab-counter" id="tabCountEpisodes">0</span>
+          </button>
+          <button type="button" class="scope-tab" data-scope="pack" id="tabPack">
+            <span id="tabPackLabel">📦 Season Packs (Zip)</span>
+            <span class="tab-counter" id="tabCountPacks">0</span>
+          </button>
+        </div>
+
+        <!-- Filter Toolbar -->
+        <div class="scope-filter-toolbar">
+          <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+            <!-- Season Filter Pills -->
+            <div class="filter-group" id="seasonFilterGroup">
+              <span class="filter-label">Season:</span>
+              <div class="filter-pills" id="seasonFilterPills">
+                <button type="button" class="filter-pill active" data-season="all">All Seasons</button>
+              </div>
+            </div>
+
+            <!-- Quality Filter Pills -->
+            <div class="filter-group" id="qualityFilterGroup">
+              <span class="filter-label">Quality:</span>
+              <div class="filter-pills" id="qualityFilterPills">
+                <button type="button" class="filter-pill active" data-quality="all">All</button>
+                <button type="button" class="filter-pill" data-quality="2160p">2160p</button>
+                <button type="button" class="filter-pill" data-quality="1080p">1080p</button>
+                <button type="button" class="filter-pill" data-quality="720p">720p</button>
+                <button type="button" class="filter-pill" data-quality="480p">480p</button>
+              </div>
             </div>
           </div>
 
-          <!-- Quality Filter Pills -->
-          <div class="filter-group" id="qualityFilterGroup">
-            <span class="filter-label">Quality:</span>
-            <div class="filter-pills" id="qualityFilterPills">
-              <button type="button" class="filter-pill active" data-quality="all">All</button>
-              <button type="button" class="filter-pill" data-quality="2160p">2160p</button>
-              <button type="button" class="filter-pill" data-quality="1080p">1080p</button>
-              <button type="button" class="filter-pill" data-quality="720p">720p</button>
-              <button type="button" class="filter-pill" data-quality="480p">480p</button>
-            </div>
+          <!-- Action Controls -->
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <input type="text" id="tableSearchInput" placeholder="🔍 Search records..." style="background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; color: var(--text-main); font-size: 0.8rem; min-width: 170px;" />
+            <span id="filteredCountInfo" style="font-size: 0.8rem; color: var(--text-muted); margin-right: 4px;"></span>
+            <button type="button" id="copyFormattedBtn" class="filter-pill" style="border: 1px solid var(--accent-blue); color: #60a5fa; cursor: pointer; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;" title="Copy visible links as: Name : <filename> <PROVIDER> = <link>">
+              📋 Copy Formatted
+            </button>
+            <button type="button" id="downloadFormattedBtn" class="filter-pill" style="border: 1px solid var(--border-color); color: #94a3b8; cursor: pointer; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px;" title="Download visible links as text file">
+              💾 Download .txt
+            </button>
+            <button type="button" id="resetDataBtn" class="filter-pill" style="border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; cursor: pointer; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px;" title="Clear all scraped data">
+              🗑️ Reset Data
+            </button>
           </div>
         </div>
 
-        <!-- Action Controls -->
-        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-          <span id="filteredCountInfo" style="font-size: 0.8rem; color: var(--text-muted); margin-right: 4px;"></span>
-          <button type="button" id="copyFormattedBtn" class="filter-pill" style="border: 1px solid var(--accent-blue); color: #60a5fa; cursor: pointer; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;" title="Copy visible links as: Name : <filename> HUBCLOUD = <link>">
-            📋 Copy Formatted
-          </button>
-          <button type="button" id="downloadFormattedBtn" class="filter-pill" style="border: 1px solid var(--border-color); color: #94a3b8; cursor: pointer; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px;" title="Download visible links as text file">
-            💾 Download .txt
-          </button>
-          <button type="button" id="resetDataBtn" class="filter-pill" style="border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; cursor: pointer; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px;" title="Clear all scraped data">
-            🗑️ Reset Data
-          </button>
+        <!-- Scraped Records Table -->
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th style="min-width: 420px;">Release File Name / Title</th>
+                <th>Scope / Episode</th>
+                <th>Quality</th>
+                <th>Provider</th>
+                <th>Status</th>
+                <th style="text-align: right; min-width: 100px;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="linksTableBody">
+              <tr>
+                <td colspan="6" class="empty-state">Loading scraped records...</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
+    </div>
 
-      <!-- Scraped Records Table -->
-      <div class="table-responsive">
-        <table>
-          <thead>
-            <tr>
-              <th style="min-width: 420px;">Release File Name / Title</th>
-              <th>Scope / Episode</th>
-              <th>Quality</th>
-              <th>Provider</th>
-              <th>Status</th>
-              <th style="text-align: right; min-width: 100px;">Action</th>
-            </tr>
-          </thead>
-          <tbody id="linksTableBody">
-            <tr>
-              <td colspan="6" class="empty-state">Loading scraped records...</td>
-            </tr>
-          </tbody>
-        </table>
+    <!-- View 2: Movies & Series History Container -->
+    <div id="viewCatalogSection" style="display: none;">
+      <div class="catalog-container">
+        <!-- Header & Action Bar -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; border-bottom: 1px solid var(--border-color); padding-bottom: 16px;">
+          <div>
+            <h3 style="font-size: 1.15rem; font-weight: 700;">📚 Movies & Series History & Dataset Container</h3>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 3px;">
+              Curated Movies & Series with automatic resolution. Click <strong>"📋 Copy Links"</strong> to grab direct HubCloud links in requested format, or <strong>"▶ Scrape Title"</strong> to scrape on demand.
+            </p>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <button type="button" id="btnCopyAllCatalog" style="background: #10b981; color: white; border: none; border-radius: 6px; padding: 8px 14px; font-size: 0.85rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+              📋 Copy All Ready Links
+            </button>
+            <button type="button" id="btnRefreshCatalog" style="background: var(--bg-elevated); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 14px; font-size: 0.85rem; font-weight: 600; cursor: pointer;">
+              🔄 Refresh Status
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter Toolbar -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 14px;">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" class="filter-pill active catalog-filter-pill" data-platform="all">All Titles (<span id="catPillAll">0</span>)</button>
+            <button type="button" class="filter-pill catalog-filter-pill" data-platform="scraped" style="color: #34d399; font-weight: 600;">✓ Scraped Ready (<span id="catPillScraped">0</span>)</button>
+            <button type="button" class="filter-pill catalog-filter-pill" data-platform="movies" style="color: #fbbf24; font-weight: 600;">🎬 Movies (<span id="catPillMovies">0</span>)</button>
+            <button type="button" class="filter-pill catalog-filter-pill" data-platform="series" style="color: #60a5fa; font-weight: 600;">📺 TV Series (<span id="catPillSeries">0</span>)</button>
+            <button type="button" class="filter-pill catalog-filter-pill" data-platform="Netflix">Netflix (<span id="catPillNetflix">0</span>)</button>
+            <button type="button" class="filter-pill catalog-filter-pill" data-platform="Prime Video">Prime Video (<span id="catPillPrime">0</span>)</button>
+            <button type="button" class="filter-pill catalog-filter-pill" data-platform="4KHDHub Archive" style="color: #a855f7; font-weight: 600;">⚡ 4KHDHub (<span id="catPill4KHDHub">0</span>)</button>
+            <button type="button" class="filter-pill catalog-filter-pill" data-platform="CloudMoviez" style="color: #10b981; font-weight: 600;">☁️ CloudMoviez (<span id="catPillCloudMoviez">0</span>)</button>
+            <button type="button" class="filter-pill catalog-filter-pill" data-platform="XDMovies" style="color: #38bdf8; font-weight: 600;">⚡ XDMovies (<span id="catPillXDMovies">0</span>)</button>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center; min-width: 280px; flex: 1; max-width: 420px;">
+            <input type="text" id="catalogSearchInput" placeholder="🔍 Search movies, series, genres, countries..." style="width: 100%; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 12px; color: var(--text-main); font-size: 0.85rem;" />
+          </div>
+        </div>
+
+        <!-- Catalog Cards Grid -->
+        <div id="catalogGrid" class="catalog-grid">
+          <div class="empty-state">Loading dataset titles...</div>
+        </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Batch Scrape Modal -->
+  <div id="batchModal" class="modal-backdrop">
+    <div class="modal-card" style="max-width: 620px;">
+      <div class="modal-header">
+        <h3 style="font-size: 1.1rem; font-weight: 600;">➕ Batch Title Scraper</h3>
+        <button type="button" class="close-btn" id="batchModalClose">&times;</button>
+      </div>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 12px;">
+        Paste a list of Movie or Series titles (one per line). Each title will be automatically searched on 4KHDHub and resolved into direct HubCloud links.
+      </p>
+      <textarea id="batchTitlesTextarea" rows="8" style="width: 100%; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; color: #f3f4f6; font-family: inherit; font-size: 0.9rem; padding: 10px; resize: vertical;" placeholder="Squid Game&#10;Stranger Things&#10;Wednesday&#10;The Boys"></textarea>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; flex-wrap: wrap; gap: 10px;">
+        <button type="button" id="btnFillNext5" style="background: var(--bg-elevated); border: 1px solid var(--border-color); color: #93c5fd; border-radius: 6px; padding: 6px 12px; font-size: 0.8rem; cursor: pointer;">
+          ⚡ Insert Next 5 Unscraped Series
+        </button>
+        <div style="display: flex; gap: 10px;">
+          <button type="button" id="btnBatchCancel" style="background: var(--bg-elevated); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 6px; padding: 8px 16px; font-weight: 600; cursor: pointer;">Cancel</button>
+          <button type="button" id="btnStartBatchScrape" style="background: #059669; color: white; border: none; border-radius: 6px; padding: 8px 18px; font-weight: 600; cursor: pointer;">Start Batch Scrape</button>
+        </div>
+      </div>
+      <div id="batchFeedback" style="margin-top: 10px; font-size: 0.85rem;"></div>
     </div>
   </div>
 
@@ -717,6 +975,7 @@
     let currentScopeFilter = 'episode'; // Default container: Download Individual Episodes
     let currentSeasonFilter = 'all';
     let currentQualityFilter = 'all';
+    let currentTableSearch = '';
 
     async function loadStats() {
       try {
@@ -784,8 +1043,19 @@
         badge.style.display = 'none';
         return;
       }
-      const isMovie = /-movie(?:-\d+)?\/?$/i.test(url) || /-movie-/i.test(url) || /\/movies?\//i.test(url) || /\/movie\b/i.test(url);
-      const isSeries = /-series(?:-\d+)?\/?$/i.test(url) || /-series-/i.test(url) || /\/series\b/i.test(url) || /\/tv-shows?\//i.test(url) || /\/tv-series\//i.test(url);
+
+      const isHttp = /^https?:\/\//i.test(url);
+      if (!isHttp && url.length >= 2) {
+        badge.style.display = 'flex';
+        badge.style.background = 'rgba(16, 185, 129, 0.15)';
+        badge.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+        badge.style.color = '#34d399';
+        badge.innerHTML = `🔍 <strong>Title Search:</strong> Will search 4KHDHub for "<code>${url.replace(/[<>&]/g, '')}</code>" and resolve all matching releases automatically.`;
+        return;
+      }
+
+      const isMovie = /-movie(?:-\d+)?\/?$/i.test(url) || /-movie-/i.test(url) || /\/movies?\//i.test(url) || /\/movie\b/i.test(url) || /\/movie\/\d+/i.test(url);
+      const isSeries = /-series(?:-\d+)?\/?$/i.test(url) || /-series-/i.test(url) || /\/series\b/i.test(url) || /\/tv-shows?\//i.test(url) || /\/tv-series\//i.test(url) || /\/tv\/\d+/i.test(url);
 
       if (isMovie) {
         badge.style.display = 'flex';
@@ -837,44 +1107,23 @@
       const epBadge = document.getElementById('tabCountEpisodes');
       const packBadge = document.getElementById('tabCountPacks');
       const allBadge = document.getElementById('tabCountAll');
-      const epLabel = document.getElementById('tabEpisodeLabel');
-      const packTab = document.getElementById('tabPack');
+      const movieBadge = document.getElementById('tabCountMovies');
 
-      const isMovie = movieCount > 0 && epCount === 0;
+      if (epBadge) epBadge.textContent = epCount;
+      if (packBadge) packBadge.textContent = packCount;
+      if (movieBadge) movieBadge.textContent = movieCount;
+      if (allBadge) allBadge.textContent = allCount;
 
-      if (isMovie) {
-        if (epLabel) epLabel.textContent = '🎬 Movie Releases';
-        if (epBadge) epBadge.textContent = movieCount;
-        if (packTab) {
-          packTab.style.opacity = '0.35';
-          packTab.title = 'Standalone movies do not have season zip packs';
-        }
-        if (packBadge) packBadge.textContent = '0';
-        if (allBadge) allBadge.textContent = allCount;
-
-        // If user was on 'pack' tab, switch to 'episode' (which acts as movie tab)
-        if (currentScopeFilter === 'pack') {
+      // Auto-selection if user hasn't explicitly clicked a tab
+      if (!userHasManuallySelectedScope) {
+        if (movieCount > 0 && epCount === 0 && packCount === 0) {
+          setActiveScopeTab('movie', false);
+        } else if (currentScopeFilter === 'episode' && epCount === 0 && packCount > 0) {
+          setActiveScopeTab('pack', false);
+        } else if (currentScopeFilter === 'pack' && packCount === 0 && epCount > 0) {
           setActiveScopeTab('episode', false);
-        }
-      } else {
-        if (epLabel) epLabel.textContent = '🎬 Individual Episodes (Single EP\'s)';
-        if (epBadge) epBadge.textContent = epCount;
-        if (packTab) {
-          packTab.style.opacity = '1';
-          packTab.title = '';
-        }
-        if (packBadge) packBadge.textContent = packCount;
-        if (allBadge) allBadge.textContent = allCount;
-
-        // Auto-selection if user hasn't explicitly clicked a tab
-        if (!userHasManuallySelectedScope) {
-          if (currentScopeFilter === 'episode' && epCount === 0 && packCount > 0) {
-            setActiveScopeTab('pack', false);
-          } else if (currentScopeFilter === 'pack' && packCount === 0 && epCount > 0) {
-            setActiveScopeTab('episode', false);
-          } else if (currentScopeFilter !== 'all' && epCount === 0 && packCount === 0 && allCount > 0) {
-            setActiveScopeTab('all', false);
-          }
+        } else if (currentScopeFilter === 'movie' && movieCount === 0 && epCount > 0) {
+          setActiveScopeTab('episode', false);
         }
       }
     }
@@ -884,17 +1133,17 @@
       const seasonFilterGroup = document.getElementById('seasonFilterGroup');
       if (!seasonPillsContainer) return;
 
-      const isMovie = allLinks.length > 0 && allLinks.every((l) => (l.scope || 'movie') === 'movie');
+      const isMovie = currentScopeFilter === 'movie' || (allLinks.length > 0 && allLinks.every((l) => (l.scope || 'movie') === 'movie'));
 
       // If scope is 'pack' or movie, season filtering is not applicable
-      if (currentScopeFilter === 'pack' || isMovie) {
+      if (currentScopeFilter === 'pack' || currentScopeFilter === 'movie' || isMovie) {
         if (seasonFilterGroup) seasonFilterGroup.style.display = 'none';
         return;
       }
 
       // Extract unique seasons from records belonging to active scope
       const relevantLinks = (allLinks || []).filter((l) => {
-        const scope = l.scope || (l.episode !== null && l.episode !== undefined ? 'episode' : (l.season !== null && l.season !== undefined ? 'pack' : 'movie'));
+        const scope = l.scope || (link.episode !== null && link.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
         if (currentScopeFilter === 'episode' && scope !== 'episode') return false;
         return l.season !== null && l.season !== undefined;
       });
@@ -935,9 +1184,9 @@
         // 2. Scope Container Filter
         const scope = link.scope || (link.episode !== null && link.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
         const isMovie = scope === 'movie';
-        // Standalone movie releases are displayed on the primary episode/release tab and all content tab
-        if (currentScopeFilter === 'episode' && scope !== 'episode' && !isMovie) return false;
+
         if (currentScopeFilter === 'movie' && !isMovie) return false;
+        if (currentScopeFilter === 'episode' && scope !== 'episode') return false;
         if (currentScopeFilter === 'pack' && scope !== 'pack') return false;
 
         // 3. Season Filter
@@ -948,6 +1197,13 @@
         // 4. Robust Quality Filter
         if (currentQualityFilter !== 'all') {
           if (!matchesQuality(link.quality, currentQualityFilter)) return false;
+        }
+
+        // 5. Title / Text Search Filter
+        if (currentTableSearch) {
+          const q = currentTableSearch.toLowerCase();
+          const t = (link.filename || link.title || '').toLowerCase();
+          if (!t.includes(q)) return false;
         }
 
         return true;
@@ -961,21 +1217,23 @@
       // Update counter indicator
       if (filteredCountInfo) {
         let scopeName = 'Records';
-        if (currentScopeFilter === 'episode') scopeName = isMovie ? 'Movie Releases' : 'Individual Episodes';
-        else if (currentScopeFilter === 'movie') scopeName = 'Movie Releases';
+        if (currentScopeFilter === 'movie') scopeName = 'Movie Releases';
+        else if (currentScopeFilter === 'episode') scopeName = isMovie ? 'Movie Releases' : 'Individual Episodes';
         else if (currentScopeFilter === 'pack') scopeName = 'Complete Season Packs';
         filteredCountInfo.textContent = `Showing ${visibleLinks.length} ${scopeName}`;
       }
 
       if (visibleLinks.length === 0) {
         let msg = 'No records found';
-        if (currentScopeFilter === 'episode') msg = isMovie ? 'No Movie Releases found' : 'No Individual Episodes found';
+        if (currentScopeFilter === 'movie') msg = 'No Movie Releases found';
+        else if (currentScopeFilter === 'episode') msg = isMovie ? 'No Movie Releases found' : 'No Individual Episodes found';
         else if (currentScopeFilter === 'pack') msg = isMovie ? 'No Season Packs (Zip) exist for movies' : 'No Complete Season (Zip/Pack) records found';
         else if (currentScopeFilter === 'movie') msg = 'No Movie Releases found';
 
         const filters = [];
         if (currentSeasonFilter !== 'all') filters.push(`Season ${currentSeasonFilter}`);
         if (currentQualityFilter !== 'all') filters.push(currentQualityFilter);
+        if (currentTableSearch) filters.push(`matching "${currentTableSearch}"`);
         if (filters.length > 0) msg += ` for ${filters.join(', ')}`;
 
         linksTableBody.innerHTML = `
@@ -1009,20 +1267,34 @@
 
         // Action column
         let actionHtml = '';
-        if (link.providerUrl && (link.providerUrl.includes('hubcloud.ist/drive/') || link.provider !== 'HUBCLOUD')) {
+        if (link.providerUrl && (link.status === 'RESOLVED' || /hubcloud/i.test(link.providerUrl) || link.provider !== 'HUBCLOUD')) {
           actionHtml = `
-            <button type="button" class="filter-pill" style="border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; font-size: 0.75rem; padding: 4px 10px;" onclick="event.stopPropagation(); copySingleLink('${escapeHtml(link.providerUrl)}', this);" title="Copy Direct HubCloud Link">
-              Copy Link
-            </button>
+            <div style="display: inline-flex; align-items: center; gap: 4px;">
+              <button type="button" class="filter-pill" style="border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; font-size: 0.75rem; padding: 4px 10px;" onclick="event.stopPropagation(); copySingleLink('${escapeHtml(link.providerUrl)}', this);" title="Copy Direct Provider Link">
+                Copy Link
+              </button>
+              <button type="button" class="filter-pill" style="border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; font-size: 0.75rem; padding: 4px 8px;" onclick="event.stopPropagation(); deleteSingleLink('${link._id}');" title="Delete Link">
+                🗑️
+              </button>
+            </div>
           `;
         } else if (link.mediatorUrl) {
           actionHtml = `
-            <button type="button" class="btn-quick-resolve" onclick="resolveHubCloudItem(event, '${link._id}');" title="Resolve mediator to HubCloud">
-              ⚡ Resolve
-            </button>
+            <div style="display: inline-flex; align-items: center; gap: 4px;">
+              <button type="button" class="btn-quick-resolve" onclick="resolveHubCloudItem(event, '${link._id}');" title="Resolve mediator to HubCloud">
+                ⚡ Resolve
+              </button>
+              <button type="button" class="filter-pill" style="border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; font-size: 0.75rem; padding: 4px 8px;" onclick="event.stopPropagation(); deleteSingleLink('${link._id}');" title="Delete Link">
+                🗑️
+              </button>
+            </div>
           `;
         } else {
-          actionHtml = `<span style="color: var(--text-muted); font-size: 0.75rem;">—</span>`;
+          actionHtml = `
+            <button type="button" class="filter-pill" style="border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; font-size: 0.75rem; padding: 4px 8px;" onclick="event.stopPropagation(); deleteSingleLink('${link._id}');" title="Delete Link">
+              🗑️
+            </button>
+          `;
         }
 
         return `
@@ -1101,19 +1373,46 @@
     });
 
 
+    async function copyToClipboard(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch {}
+      }
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      try {
+        const successful = document.execCommand('copy');
+        textArea.remove();
+        return successful;
+      } catch {
+        textArea.remove();
+        return false;
+      }
+    }
+
     function getFormattedText(links) {
       if (!links || links.length === 0) return '';
       return links
         .filter((link) => {
           const url = link.providerUrl || '';
-          // STRICT RULE: Never output intermediate mediator links like greenmotors
+          // STRICT RULE: Never output intermediate mediator links like greenmotors or thenaukriadda, and omit dtflix/dotflix
           if (url.includes('greenmotors') || url.includes('?id=')) return false;
-          if ((link.provider || '').toUpperCase() === 'HUBCLOUD' && !url.includes('hubcloud.ist/drive/')) return false;
+          if (url.includes('thenaukriadda') || url.includes('naukriadda')) return false;
+          if (url.includes('dtflix') || url.includes('dotflix')) return false;
+          if ((link.provider || '').toUpperCase() === 'HUBCLOUD' && !/hubcloud/i.test(url)) return false;
           return Boolean(url);
         })
         .map((link) => {
           const name = link.filename || link.title || 'Unknown';
-          const prov = (link.provider || 'HUBCLOUD').toUpperCase();
+          const prov = (link.provider || 'GDFLIX').toUpperCase();
           const url = link.providerUrl || '';
           return `Name : ${name} ${prov} = ${url}`;
         })
@@ -1126,20 +1425,24 @@
         const visibleLinks = getFilteredLinks();
         const text = getFormattedText(visibleLinks);
         if (!text) {
-          alert('No resolved HubCloud links available in this container to copy!');
+          alert('No resolved links available in this container to copy!');
           return;
         }
-        await navigator.clipboard.writeText(text);
-        const originalText = copyFormattedBtn.innerHTML;
-        const count = text.split('\n').filter(Boolean).length;
-        copyFormattedBtn.innerHTML = `✓ Copied ${count} Links!`;
-        copyFormattedBtn.style.borderColor = 'var(--status-resolved)';
-        copyFormattedBtn.style.color = 'var(--status-resolved)';
-        setTimeout(() => {
-          copyFormattedBtn.innerHTML = originalText;
-          copyFormattedBtn.style.borderColor = 'var(--accent-blue)';
-          copyFormattedBtn.style.color = '#60a5fa';
-        }, 2000);
+        const copied = await copyToClipboard(text);
+        if (copied) {
+          const originalText = copyFormattedBtn.innerHTML;
+          const count = text.split('\n').filter(Boolean).length;
+          copyFormattedBtn.innerHTML = `✓ Copied ${count} Links!`;
+          copyFormattedBtn.style.borderColor = 'var(--status-resolved)';
+          copyFormattedBtn.style.color = 'var(--status-resolved)';
+          setTimeout(() => {
+            copyFormattedBtn.innerHTML = originalText;
+            copyFormattedBtn.style.borderColor = 'var(--accent-blue)';
+            copyFormattedBtn.style.color = '#60a5fa';
+          }, 2000);
+        } else {
+          alert('Failed to copy to clipboard.');
+        }
       });
     }
 
@@ -1149,7 +1452,7 @@
         const visibleLinks = getFilteredLinks();
         const text = getFormattedText(visibleLinks);
         if (!text) {
-          alert('No resolved HubCloud links available to download!');
+          alert('No resolved links available to download!');
           return;
         }
         const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -1165,15 +1468,40 @@
       });
     }
 
+    const tableSearchInput = document.getElementById('tableSearchInput');
+    if (tableSearchInput) {
+      tableSearchInput.addEventListener('input', (e) => {
+        currentTableSearch = (e.target.value || '').trim();
+        renderTable();
+      });
+    }
+
     window.copySingleLink = async function(url, btn) {
-      await navigator.clipboard.writeText(url);
-      const originalText = btn.innerHTML;
-      btn.innerHTML = '✓ Copied';
-      btn.style.color = '#10b981';
-      setTimeout(() => {
-        btn.innerHTML = originalText;
-        btn.style.color = '#34d399';
-      }, 1500);
+      const copied = await copyToClipboard(url);
+      if (copied) {
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '✓ Copied';
+        btn.style.color = '#10b981';
+        setTimeout(() => {
+          btn.innerHTML = originalText;
+          btn.style.color = '#34d399';
+        }, 1500);
+      }
+    };
+
+    window.deleteSingleLink = async function(id) {
+      if (!confirm('Are you sure you want to delete this link record?')) return;
+      try {
+        const res = await fetch('/api/links/' + encodeURIComponent(id), { method: 'DELETE' });
+        if (res.ok) {
+          await loadLinks();
+          await loadStats();
+        } else {
+          alert('Failed to delete record.');
+        }
+      } catch (err) {
+        alert('Network error deleting link: ' + err.message);
+      }
     };
 
     async function resolveHubCloudItem(event, id) {
@@ -1227,7 +1555,10 @@
       }
 
       submitBtn.disabled = true;
-      submitFeedback.textContent = `Submitting scrape job (Scope: ${scope}, Quality: ${quality})...`;
+      const isSearch = !/^https?:\/\//i.test(url);
+      submitFeedback.textContent = isSearch
+        ? `Searching 4KHDHub for "${url}"...`
+        : `Submitting scrape job (Scope: ${scope}, Quality: ${quality})...`;
       submitFeedback.style.color = 'var(--text-muted)';
 
       try {
@@ -1239,7 +1570,11 @@
 
         const data = await res.json();
         if (res.ok) {
-          submitFeedback.textContent = `Job enqueued successfully (ID: ${data.jobId}). Processing...`;
+          if (data.matchedTitle) {
+            submitFeedback.textContent = `🎬 Found "${data.matchedTitle}"! Scrape job enqueued (ID: ${data.jobId}). Processing...`;
+          } else {
+            submitFeedback.textContent = `Job enqueued successfully (ID: ${data.jobId}). Processing...`;
+          }
           submitFeedback.style.color = 'var(--status-resolved)';
           targetUrlInput.value = '';
           const badge = document.getElementById('urlDetectionBadge');
@@ -1373,13 +1708,582 @@
         .replace(/"/g, '&quot;');
     }
 
+    // --- Series History & Dataset Container Logic ---
+    let catalogItems = [];
+    let currentCatalogPlatform = 'all';
+    let currentCatalogSearch = '';
+
+    const btnViewTable = document.getElementById('btnViewTable');
+    const btnViewCatalog = document.getElementById('btnViewCatalog');
+    const viewTableSection = document.getElementById('viewTableSection');
+    const viewCatalogSection = document.getElementById('viewCatalogSection');
+    const viewTableLinkCount = document.getElementById('viewTableLinkCount');
+    const viewCatalogCount = document.getElementById('viewCatalogCount');
+    const catalogGrid = document.getElementById('catalogGrid');
+    const catalogSearchInput = document.getElementById('catalogSearchInput');
+    const btnRefreshCatalog = document.getElementById('btnRefreshCatalog');
+    const btnCopyAllCatalog = document.getElementById('btnCopyAllCatalog');
+
+    // Batch Modal Elements
+    const btnOpenBatchModal = document.getElementById('btnOpenBatchModal');
+    const batchModal = document.getElementById('batchModal');
+    const batchModalClose = document.getElementById('batchModalClose');
+    const btnBatchCancel = document.getElementById('btnBatchCancel');
+    const btnStartBatchScrape = document.getElementById('btnStartBatchScrape');
+    const btnFillNext5 = document.getElementById('btnFillNext5');
+    const batchTitlesTextarea = document.getElementById('batchTitlesTextarea');
+    const batchFeedback = document.getElementById('batchFeedback');
+
+    function switchMasterView(view) {
+      if (view === 'table') {
+        if (btnViewTable) {
+          btnViewTable.classList.add('active');
+          btnViewTable.style.background = 'var(--accent-blue)';
+          btnViewTable.style.color = 'white';
+        }
+        if (btnViewCatalog) {
+          btnViewCatalog.classList.remove('active');
+          btnViewCatalog.style.background = 'var(--bg-elevated)';
+          btnViewCatalog.style.color = 'var(--text-muted)';
+        }
+        if (viewTableSection) viewTableSection.style.display = 'block';
+        if (viewCatalogSection) viewCatalogSection.style.display = 'none';
+      } else {
+        if (btnViewCatalog) {
+          btnViewCatalog.classList.add('active');
+          btnViewCatalog.style.background = 'var(--accent-blue)';
+          btnViewCatalog.style.color = 'white';
+        }
+        if (btnViewTable) {
+          btnViewTable.classList.remove('active');
+          btnViewTable.style.background = 'var(--bg-elevated)';
+          btnViewTable.style.color = 'var(--text-muted)';
+        }
+        if (viewTableSection) viewTableSection.style.display = 'none';
+        if (viewCatalogSection) viewCatalogSection.style.display = 'block';
+        loadCatalog();
+      }
+    }
+
+    if (btnViewTable) btnViewTable.addEventListener('click', () => switchMasterView('table'));
+    if (btnViewCatalog) btnViewCatalog.addEventListener('click', () => switchMasterView('catalog'));
+
+    // Batch modal listeners
+    if (btnOpenBatchModal) btnOpenBatchModal.addEventListener('click', () => {
+      batchModal.style.display = 'flex';
+      batchFeedback.textContent = '';
+    });
+    if (batchModalClose) batchModalClose.addEventListener('click', () => batchModal.style.display = 'none');
+    if (btnBatchCancel) btnBatchCancel.addEventListener('click', () => batchModal.style.display = 'none');
+    window.addEventListener('click', (e) => {
+      if (e.target === batchModal) batchModal.style.display = 'none';
+    });
+
+    if (btnFillNext5) {
+      btnFillNext5.addEventListener('click', () => {
+        const unscraped = catalogItems.filter(i => !i.isScraped).slice(0, 5);
+        if (unscraped.length > 0) {
+          batchTitlesTextarea.value = unscraped.map(i => i.title).join('\n');
+        } else {
+          batchTitlesTextarea.value = 'Squid Game\nStranger Things\nWednesday\nThe Boys\nMirzapur';
+        }
+      });
+    }
+
+    if (btnStartBatchScrape) {
+      btnStartBatchScrape.addEventListener('click', async () => {
+        const raw = batchTitlesTextarea.value.trim();
+        if (!raw) return;
+        const titles = raw.split('\n').map(t => t.trim()).filter(Boolean);
+        if (titles.length === 0) return;
+
+        btnStartBatchScrape.disabled = true;
+        batchFeedback.textContent = `Queuing ${titles.length} title(s)...`;
+        batchFeedback.style.color = 'var(--text-muted)';
+
+        let completed = 0;
+        for (const title of titles) {
+          batchFeedback.textContent = `[${completed + 1}/${titles.length}] Enqueuing: ${title}...`;
+          try {
+            await fetch('/api/scrape', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: title, autoReset: false })
+            });
+            completed++;
+          } catch (e) {
+            console.error('Batch error:', e);
+          }
+        }
+
+        batchFeedback.textContent = `✓ Successfully enqueued ${completed} title(s)! Processing in background.`;
+        batchFeedback.style.color = 'var(--status-resolved)';
+        setTimeout(() => {
+          batchModal.style.display = 'none';
+          btnStartBatchScrape.disabled = false;
+          loadStats();
+          loadLinks();
+          loadCatalog();
+        }, 1500);
+      });
+    }
+
+    async function loadCatalog() {
+      try {
+        const res = await fetch('/api/catalog');
+        if (res.ok) {
+          catalogItems = await res.json();
+          updateCatalogPills();
+          renderCatalog();
+        }
+      } catch (err) {
+        console.error('Error loading catalog:', err);
+      }
+    }
+
+    function updateCatalogPills() {
+      const total = catalogItems.length;
+      const scraped = catalogItems.filter(i => i.isScraped).length;
+      const movies = catalogItems.filter(i => i.format === 'Movie').length;
+      const series = catalogItems.filter(i => i.format !== 'Movie').length;
+      const netflix = catalogItems.filter(i => i.platform === 'Netflix').length;
+      const prime = catalogItems.filter(i => i.platform === 'Prime Video').length;
+      const fourkhd = catalogItems.filter(i => i.platform === '4KHDHub Archive').length;
+      const cloudmoviez = catalogItems.filter(i => i.platform === 'CloudMoviez').length;
+      const xdmovies = catalogItems.filter(i => i.platform === 'XDMovies').length;
+
+      const pAll = document.getElementById('catPillAll');
+      const pScraped = document.getElementById('catPillScraped');
+      const pMovies = document.getElementById('catPillMovies');
+      const pSeries = document.getElementById('catPillSeries');
+      const pNetflix = document.getElementById('catPillNetflix');
+      const pPrime = document.getElementById('catPillPrime');
+      const p4KH = document.getElementById('catPill4KHDHub');
+      const pCM = document.getElementById('catPillCloudMoviez');
+      const pXD = document.getElementById('catPillXDMovies');
+      const vCat = document.getElementById('viewCatalogCount');
+
+      if (pAll) pAll.textContent = total;
+      if (pScraped) pScraped.textContent = scraped;
+      if (pMovies) pMovies.textContent = movies;
+      if (pSeries) pSeries.textContent = series;
+      if (pNetflix) pNetflix.textContent = netflix;
+      if (pPrime) pPrime.textContent = prime;
+      if (p4KH) p4KH.textContent = fourkhd;
+      if (pCM) pCM.textContent = cloudmoviez;
+      if (pXD) pXD.textContent = xdmovies;
+      if (vCat) vCat.textContent = total;
+    }
+
+    function renderCatalog() {
+      if (!catalogGrid) return;
+      const q = currentCatalogSearch.toLowerCase().trim();
+
+      const filtered = catalogItems.filter(item => {
+        // Platform and Format filter
+        if (currentCatalogPlatform === 'scraped' && !item.isScraped) return false;
+        if (currentCatalogPlatform === 'movies' && item.format !== 'Movie') return false;
+        if (currentCatalogPlatform === 'series' && item.format === 'Movie') return false;
+        if (currentCatalogPlatform === 'Netflix' && item.platform !== 'Netflix') return false;
+        if (currentCatalogPlatform === 'Prime Video' && item.platform !== 'Prime Video') return false;
+        if (currentCatalogPlatform === '4KHDHub Archive' && item.platform !== '4KHDHub Archive') return false;
+        if (currentCatalogPlatform === 'CloudMoviez' && item.platform !== 'CloudMoviez') return false;
+        if (currentCatalogPlatform === 'XDMovies' && item.platform !== 'XDMovies') return false;
+
+        // Search query
+        if (q) {
+          const matchTitle = (item.title || '').toLowerCase().includes(q);
+          const matchGenre = (item.genre || '').toLowerCase().includes(q);
+          const matchCountry = (item.country || '').toLowerCase().includes(q);
+          const matchLang = (item.language || '').toLowerCase().includes(q);
+          if (!matchTitle && !matchGenre && !matchCountry && !matchLang) return false;
+        }
+
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        catalogGrid.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;">No titles matched your filter.</div>';
+        return;
+      }
+
+      catalogGrid.innerHTML = filtered.map(item => {
+        const isNetflix = item.platform === 'Netflix';
+        const isPrime = item.platform === 'Prime Video';
+        const isCloudMoviez = item.platform === 'CloudMoviez';
+        const isXDMovies = item.platform === 'XDMovies';
+        const isMovie = item.format === 'Movie';
+
+        let badgeClass = 'badge-custom';
+        let badgeLabel = `#${item.rank} ${item.platform}`;
+        if (isXDMovies) {
+          badgeClass = 'badge-xdmovies';
+          badgeLabel = isMovie ? `🎬 #${item.rank} XDMovies` : `📺 #${item.rank} XDMovies`;
+        } else if (isCloudMoviez) {
+          badgeClass = 'badge-cloudmoviez';
+          badgeLabel = isMovie ? `🎬 #${item.rank} Movie` : `📺 #${item.rank} Series`;
+        } else if (isMovie) {
+          badgeClass = 'badge-movie';
+          badgeLabel = `🎬 #${item.rank} Movie`;
+        } else if (isNetflix) {
+          badgeClass = 'badge-netflix';
+          badgeLabel = `#${item.rank} Netflix`;
+        } else if (isPrime) {
+          badgeClass = 'badge-prime';
+          badgeLabel = `#${item.rank} Prime`;
+        }
+
+        const cardClass = item.isScraped ? 'catalog-card scraped' : 'catalog-card';
+        const safeTitle = escapeHtml(item.title);
+        const encodedTitle = encodeURIComponent(item.title);
+
+        const statusHtml = item.isScraped
+          ? `<span style="color: #34d399; font-weight: 600; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px;">✓ ${item.scrapedCount} Releases Ready</span>`
+          : `<span style="color: #94a3b8; font-size: 0.8rem;">⚡ Not Scraped Yet</span>`;
+
+        const actionHtml = item.isScraped
+          ? `
+            <div style="display: flex; gap: 6px;">
+              <button type="button" class="btn-copy-card" data-title="${encodeURIComponent(item.title)}" data-url="${encodeURIComponent(item.url || '')}" onclick="copyCatalogTitleLinks(decodeURIComponent(this.dataset.title), this, decodeURIComponent(this.dataset.url))" title="Copy direct download links for ${safeTitle}">
+                📋 Copy Links
+              </button>
+              <button type="button" class="btn-scrape-card" style="background: var(--bg-elevated); border: 1px solid var(--border-color); color: var(--text-main);" data-title="${encodeURIComponent(item.title)}" onclick="viewTitleInTable(decodeURIComponent(this.dataset.title))" title="Filter table to this title">
+                👁 View
+              </button>
+            </div>
+          `
+          : `
+            <button type="button" class="btn-scrape-card" data-title="${encodeURIComponent(item.title)}" data-url="${encodeURIComponent(item.url || '')}" onclick="scrapeCatalogTitle(decodeURIComponent(this.dataset.title), this, decodeURIComponent(this.dataset.url))" title="Scrape and resolve all releases for ${safeTitle}">
+              ▶ Scrape Title
+            </button>
+          `;
+
+        return `
+          <div class="${cardClass}">
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                <span class="${badgeClass}">${badgeLabel}</span>
+                <span style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(item.format)}</span>
+              </div>
+              <h4 style="font-size: 1.05rem; font-weight: 700; margin: 8px 0 4px 0; color: #f3f4f6;">${safeTitle}</h4>
+              <p style="font-size: 0.78rem; color: #94a3b8; margin: 0;">${escapeHtml(item.genre)}</p>
+              <p style="font-size: 0.75rem; color: #64748b; margin-top: 2px;">${escapeHtml(item.country)} • ${escapeHtml(item.language)}</p>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 6px;">
+              ${statusHtml}
+              ${actionHtml}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Catalog Filter listeners
+    document.querySelectorAll('.catalog-filter-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        document.querySelectorAll('.catalog-filter-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        currentCatalogPlatform = pill.getAttribute('data-platform') || 'all';
+        renderCatalog();
+      });
+    });
+
+    if (catalogSearchInput) {
+      catalogSearchInput.addEventListener('input', (e) => {
+        currentCatalogSearch = e.target.value;
+        renderCatalog();
+      });
+    }
+
+    if (btnRefreshCatalog) {
+      btnRefreshCatalog.addEventListener('click', () => {
+        loadCatalog();
+      });
+    }
+
+    window.copyCatalogTitleLinks = async function(title, btn, directUrl) {
+      if (!btn) return;
+      const originalText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Fetching...';
+
+      try {
+        let apiUrl = '/api/catalog/links?title=' + encodeURIComponent(title);
+        if (directUrl) apiUrl += '&url=' + encodeURIComponent(directUrl);
+        const res = await fetch(apiUrl);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.formattedText) {
+            await copyToClipboard(data.formattedText);
+            btn.innerHTML = '✓ Copied!';
+            btn.style.background = '#059669';
+            setTimeout(() => {
+              btn.innerHTML = originalText;
+              btn.disabled = false;
+              btn.style.background = '#10b981';
+            }, 1800);
+          } else {
+            alert('No resolved links found for: ' + title);
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+          }
+        }
+      } catch (e) {
+        alert('Error copying links: ' + e.message);
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }
+    };
+
+    window.scrapeCatalogTitle = async function(title, btn, directUrl) {
+      if (!btn) return;
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Scraping...';
+      btn.style.background = '#d97706';
+
+      try {
+        const payload = directUrl ? { url: directUrl, autoReset: false } : { url: title, autoReset: false };
+        const res = await fetch('/api/scrape', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok) {
+          btn.innerHTML = '✓ Enqueued!';
+          btn.style.background = '#10b981';
+          setTimeout(() => {
+            loadCatalog();
+            loadStats();
+            loadLinks();
+          }, 2000);
+        } else {
+          alert('Scrape failed: ' + (data.error || 'Unknown error'));
+          btn.innerHTML = '▶ Scrape Title';
+          btn.disabled = false;
+          btn.style.background = '#2563eb';
+        }
+      } catch (e) {
+        alert('Error scraping title: ' + e.message);
+        btn.innerHTML = '▶ Scrape Title';
+        btn.disabled = false;
+        btn.style.background = '#2563eb';
+      }
+    };
+
+    window.viewTitleInTable = function(title) {
+      switchMasterView('table');
+      currentTableSearch = (title || '').trim();
+      const tableSearchInput = document.getElementById('tableSearchInput');
+      if (tableSearchInput) tableSearchInput.value = currentTableSearch;
+      renderTable();
+      window.scrollTo({ top: 400, behavior: 'smooth' });
+    };
+
+    if (btnCopyAllCatalog) {
+      btnCopyAllCatalog.addEventListener('click', async () => {
+        const originalText = btnCopyAllCatalog.innerHTML;
+        btnCopyAllCatalog.disabled = true;
+        btnCopyAllCatalog.innerHTML = '⏳ Gathering...';
+
+        try {
+          const res = await fetch('/api/links?limit=5000');
+          if (res.ok) {
+            const links = await res.json();
+            const text = getFormattedText(links);
+            if (text) {
+              await copyToClipboard(text);
+              btnCopyAllCatalog.innerHTML = '✓ All Links Copied!';
+              btnCopyAllCatalog.style.background = '#059669';
+              setTimeout(() => {
+                btnCopyAllCatalog.innerHTML = originalText;
+                btnCopyAllCatalog.disabled = false;
+                btnCopyAllCatalog.style.background = '#10b981';
+              }, 2000);
+            } else {
+              alert('No scraped links available to copy.');
+              btnCopyAllCatalog.innerHTML = originalText;
+              btnCopyAllCatalog.disabled = false;
+            }
+          }
+        } catch (e) {
+          alert('Error: ' + e.message);
+          btnCopyAllCatalog.innerHTML = originalText;
+          btnCopyAllCatalog.disabled = false;
+        }
+      });
+    }
+
+    // --- Crawler Controls & Status Logic ---
+    const btnCrawl5 = document.getElementById('btnCrawl5');
+    const btnCrawl10 = document.getElementById('btnCrawl10');
+    const btnCrawlContinuous = document.getElementById('btnCrawlContinuous');
+    const btnCrawlerPause = document.getElementById('btnCrawlerPause');
+    const btnCrawlerResume = document.getElementById('btnCrawlerResume');
+    const btnCrawlerStop = document.getElementById('btnCrawlerStop');
+    const crawlerBadge = document.getElementById('crawlerBadge');
+    const crawlerStatusBar = document.getElementById('crawlerStatusBar');
+    const crawlerStatusText = document.getElementById('crawlerStatusText');
+    const crawlerMetricsText = document.getElementById('crawlerMetricsText');
+    const crawlerProgressBar = document.getElementById('crawlerProgressBar');
+
+    async function fetchCrawlerStatus() {
+      try {
+        const res = await fetch('/api/crawler/status');
+        if (!res.ok) return;
+        const status = await res.json();
+        updateCrawlerUI(status);
+      } catch (err) {
+        console.error('Crawler status error:', err);
+      }
+    }
+
+    function updateCrawlerUI(status) {
+      if (!crawlerBadge) return;
+
+      if (status.isRunning) {
+        if (status.isPaused) {
+          crawlerBadge.textContent = 'PAUSED';
+          crawlerBadge.style.background = 'rgba(217, 119, 6, 0.2)';
+          crawlerBadge.style.color = '#fbbf24';
+          if (btnCrawlerPause) btnCrawlerPause.style.display = 'none';
+          if (btnCrawlerResume) btnCrawlerResume.style.display = 'inline-block';
+          if (btnCrawlerStop) btnCrawlerStop.style.display = 'inline-block';
+        } else {
+          crawlerBadge.textContent = 'CRAWLING';
+          crawlerBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+          crawlerBadge.style.color = '#34d399';
+          if (btnCrawlerPause) btnCrawlerPause.style.display = 'inline-block';
+          if (btnCrawlerResume) btnCrawlerResume.style.display = 'none';
+          if (btnCrawlerStop) btnCrawlerStop.style.display = 'inline-block';
+        }
+
+        if (btnCrawl5) btnCrawl5.style.display = 'none';
+        if (btnCrawl10) btnCrawl10.style.display = 'none';
+        if (btnCrawlContinuous) btnCrawlContinuous.style.display = 'none';
+
+        if (crawlerStatusBar) crawlerStatusBar.style.display = 'block';
+        if (crawlerStatusText) {
+          const maxP = status.mode === 'continuous' ? '∞' : status.endPage;
+          crawlerStatusText.textContent = `Crawling page ${status.currentPage} of ${maxP}... (${status.mode === 'continuous' ? 'Full Site Mode' : 'Batch Range'})`;
+        }
+        if (crawlerMetricsText) {
+          crawlerMetricsText.textContent = `Posts Discovered: ${status.totalPostsFound} | Pages Done: ${status.totalPagesCrawled}`;
+        }
+        if (crawlerProgressBar) {
+          if (status.mode === 'continuous') {
+            crawlerProgressBar.style.width = '100%';
+            crawlerProgressBar.style.background = '#7c3aed';
+          } else {
+            const pct = Math.min(100, Math.round((status.currentPage / status.endPage) * 100));
+            crawlerProgressBar.style.width = `${pct}%`;
+            crawlerProgressBar.style.background = '#10b981';
+          }
+        }
+      } else {
+        crawlerBadge.textContent = 'IDLE';
+        crawlerBadge.style.background = 'rgba(100, 116, 139, 0.2)';
+        crawlerBadge.style.color = '#94a3b8';
+
+        if (btnCrawl5) btnCrawl5.style.display = 'inline-block';
+        if (btnCrawl10) btnCrawl10.style.display = 'inline-block';
+        if (btnCrawlContinuous) btnCrawlContinuous.style.display = 'inline-block';
+
+        if (btnCrawlerPause) btnCrawlerPause.style.display = 'none';
+        if (btnCrawlerResume) btnCrawlerResume.style.display = 'none';
+        if (btnCrawlerStop) btnCrawlerStop.style.display = 'none';
+
+        if (status.totalPagesCrawled > 0) {
+          if (crawlerStatusBar) crawlerStatusBar.style.display = 'block';
+          if (crawlerStatusText) crawlerStatusText.textContent = `Completed! Crawled ${status.totalPagesCrawled} page(s) • Total posts enqueued: ${status.totalPostsFound}`;
+          if (crawlerMetricsText) crawlerMetricsText.textContent = `Status: Finished`;
+          if (crawlerProgressBar) crawlerProgressBar.style.width = '100%';
+        } else {
+          if (crawlerStatusBar) crawlerStatusBar.style.display = 'none';
+        }
+      }
+    }
+
+    async function startCrawl(mode, startPage, endPage) {
+      try {
+        const baseUrl = document.getElementById('crawlerTargetSite')?.value || 'https://huh.xdmovies.wtf';
+        const res = await fetch('/api/crawler/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode, startPage, endPage, baseUrl, delayMs: 1000 })
+        });
+        const data = await res.json();
+        if (data.status) {
+          updateCrawlerUI(data.status);
+        }
+        fetchCrawlerStatus();
+      } catch (err) {
+        alert('Failed to start crawler: ' + err.message);
+      }
+    }
+
+    if (btnCrawl5) {
+      btnCrawl5.addEventListener('click', () => startCrawl('range', 1, 5));
+    }
+    if (btnCrawl10) {
+      btnCrawl10.addEventListener('click', () => startCrawl('range', 1, 10));
+    }
+    if (btnCrawlContinuous) {
+      btnCrawlContinuous.addEventListener('click', () => {
+        const siteLabel = document.getElementById('crawlerTargetSite')?.selectedOptions?.[0]?.text || 'selected site';
+        if (confirm(`Start continuous crawl across ${siteLabel}? It will run gently in the background with 1s delays.`)) {
+          startCrawl('continuous', 1, 9999);
+        }
+      });
+    }
+
+    if (btnCrawlerPause) {
+      btnCrawlerPause.addEventListener('click', async () => {
+        try {
+          const res = await fetch('/api/crawler/pause', { method: 'POST' });
+          const data = await res.json();
+          if (data.status) updateCrawlerUI(data.status);
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
+
+    if (btnCrawlerResume) {
+      btnCrawlerResume.addEventListener('click', async () => {
+        try {
+          const res = await fetch('/api/crawler/resume', { method: 'POST' });
+          const data = await res.json();
+          if (data.status) updateCrawlerUI(data.status);
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
+
+    if (btnCrawlerStop) {
+      btnCrawlerStop.addEventListener('click', async () => {
+        try {
+          const res = await fetch('/api/crawler/stop', { method: 'POST' });
+          const data = await res.json();
+          if (data.status) updateCrawlerUI(data.status);
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
+
     // Initial load and periodic polling
     loadStats();
     loadLinks();
+    loadCatalog();
+    fetchCrawlerStatus();
     setInterval(() => {
       loadStats();
       loadLinks();
-    }, 5000);
+      loadCatalog();
+      fetchCrawlerStatus();
+    }, 4000);
   </script>
 </body>
 </html>

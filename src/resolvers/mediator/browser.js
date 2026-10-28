@@ -5,7 +5,9 @@ import {
   detectCountdownInPage,
   detectGetLinkControl,
   detectVerifyControl,
+  detectInvalidLinkInPage,
 } from './detector.js';
+import { extractEmbeddedMediatorPayload } from './http-first.js';
 import { STATES, MediatorStateMachine } from './stateMachine.js';
 import { logger } from '../../logging/logger.js';
 
@@ -51,6 +53,28 @@ export async function resolveMediatorFlow(mediatorUrl, options = {}) {
   if (isHubCloudDriveUrl(mediatorUrl)) {
     sm.transition(STATES.HUBCLOUD_DETECTED, { destination: mediatorUrl, info: 'Already a HubCloud destination URL' });
     return sm.getSummary();
+  }
+
+  // Fast HTTP pre-check: extract embedded payload without spinning up heavy browser
+  try {
+    const httpRes = await fetch(mediatorUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        'Referer': meta.sourceUrl || 'https://4khdhub.one/',
+      },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (httpRes.ok) {
+      const htmlText = await httpRes.text();
+      const directDest = extractEmbeddedMediatorPayload(htmlText);
+      if (directDest && isHubCloudDriveUrl(directDest)) {
+        logger.discovered(`[resolveMediatorFlow] Fast HTTP resolved HubCloud destination: ${directDest}`);
+        sm.transition(STATES.HUBCLOUD_DETECTED, { destination: directDest, info: 'Decoded from embedded mediator payload (fast HTTP)' });
+        return sm.getSummary();
+      }
+    }
+  } catch {
+    // Non-fatal, fallback to browser
   }
 
   const openTimeout = options.openTimeout || 25000;
@@ -117,6 +141,16 @@ export async function resolveMediatorFlow(mediatorUrl, options = {}) {
       return sm.getSummary();
     }
 
+    // Check immediately for dead/invalid/expired link
+    const initialInvalid = await detectInvalidLinkInPage(page);
+    if (initialInvalid.isInvalid) {
+      sm.transition(STATES.INVALID_LINK, {
+        error: `Upstream mediator link is invalid or expired: ${initialInvalid.reason}`,
+        info: 'Fast-fail: upstream link dead on source site / mediator host.',
+      });
+      return sm.getSummary();
+    }
+
     // Check immediately for human verification challenge (Section 14: Hard boundary)
     const initialChallenge = await detectChallengeInPage(page);
     if (initialChallenge.isChallenge) {
@@ -127,15 +161,39 @@ export async function resolveMediatorFlow(mediatorUrl, options = {}) {
       return sm.getSummary();
     }
 
+    // Fast path: inspect HTML for embedded mediator destination payload (zero-wait)
+    try {
+      const pageHtml = await page.content();
+      const directDest = extractEmbeddedMediatorPayload(pageHtml);
+      if (directDest && isHubCloudDriveUrl(directDest)) {
+        sm.transition(STATES.HUBCLOUD_DETECTED, {
+          destination: directDest,
+          info: 'Destination found directly from embedded mediator payload in page',
+        });
+        return sm.getSummary();
+      }
+    } catch {}
+
     // 2. WAITING / COUNTDOWN
     sm.transition(STATES.WAITING, { info: 'Page loaded, observing state transitions' });
 
     const countdownStart = Date.now();
     let getLinkControl = null;
     let timerObserved = false;
-    let verifyAttempted = false;
+    let lastVerifyClickTime = 0;
+    let lastClickedVerifyKey = '';
 
     while (Date.now() - countdownStart < countdownTimeout) {
+      // Periodic dead/invalid link check
+      const invalidCheck = await detectInvalidLinkInPage(page);
+      if (invalidCheck.isInvalid) {
+        sm.transition(STATES.INVALID_LINK, {
+          error: `Upstream mediator link is invalid or expired: ${invalidCheck.reason}`,
+          info: 'Fast-fail: upstream link dead on source site / mediator host.',
+        });
+        return sm.getSummary();
+      }
+
       // Periodic challenge check
       const challenge = await detectChallengeInPage(page);
       if (challenge.isChallenge) {
@@ -163,23 +221,28 @@ export async function resolveMediatorFlow(mediatorUrl, options = {}) {
         break;
       }
 
-      // If Get Link is not yet available, check for initial verify/continue action
-      if (!verifyAttempted) {
+      // Check for verify/continue action (supports multi-step: Step 1 -> Step 2 -> Get Link)
+      const now = Date.now();
+      if (now - lastVerifyClickTime > 2500) {
         const verifyControl = await detectVerifyControl(page);
         if (verifyControl && verifyControl.available) {
-          logger.log('MEDIATOR', `Triggering mediator verification step: "${verifyControl.text}" (${verifyControl.selector})`);
-          try {
-            if (verifyControl.selector) {
-              await page.click(verifyControl.selector, { timeout: 3000 }).catch(async () => {
-                await page.evaluate((sel) => {
-                  const el = document.querySelector(sel) || document.getElementById('verify_btn');
-                  if (el) el.click();
-                }, verifyControl.selector);
-              });
+          const verifyKey = `${verifyControl.selector || ''}::${verifyControl.text || ''}`;
+          if (verifyKey !== lastClickedVerifyKey || now - lastVerifyClickTime > 6000) {
+            lastClickedVerifyKey = verifyKey;
+            lastVerifyClickTime = now;
+            logger.log('MEDIATOR', `Triggering mediator verification step: "${verifyControl.text}" (${verifyControl.selector})`);
+            try {
+              if (verifyControl.selector) {
+                await page.click(verifyControl.selector, { timeout: 3000 }).catch(async () => {
+                  await page.evaluate((sel) => {
+                    const el = document.querySelector(sel) || document.getElementById('verify_btn');
+                    if (el) el.click();
+                  }, verifyControl.selector);
+                });
+              }
+            } catch (vErr) {
+              logger.warning(`Verification click error: ${vErr.message}`);
             }
-            verifyAttempted = true;
-          } catch (vErr) {
-            logger.warning(`Verification click error: ${vErr.message}`);
           }
         }
       }

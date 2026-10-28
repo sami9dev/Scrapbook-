@@ -315,8 +315,8 @@ describe('4KHDHub → Mediator → HubCloud Resolver Test Suite (Section 22)', (
     expect(detectContentTypeFromUrl('https://4khdhub.one/unabomber-movie-8202')).toBe('movie');
     expect(detectContentTypeFromUrl('https://4khdhub.one/mobland-series-98/')).toBe('series');
     expect(detectContentTypeFromUrl('https://4khdhub.one/mobland-series-98')).toBe('series');
-    expect(detectContentTypeFromUrl('https://top.xdmovies.wtf/movies/avatar-3/')).toBe('movie');
-    expect(detectContentTypeFromUrl('https://top.xdmovies.wtf/series/loki-season-2/')).toBe('series');
+    expect(detectContentTypeFromUrl('https://sample-movies.org/movies/avatar-3/')).toBe('movie');
+    expect(detectContentTypeFromUrl('https://sample-series.org/series/loki-season-2/')).toBe('series');
     expect(detectContentTypeFromUrl('https://example.com/random-page')).toBe(null);
   });
 

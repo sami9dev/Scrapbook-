@@ -26,11 +26,26 @@ export function isHubCloudDriveUrl(urlString, options = {}) {
 
   try {
     const parsed = new URL(urlString);
-    const allowed = options.allowedHostnames || ['hubcloud.ist', 'hubcloud.club', 'hubcloud.art', 'hubcloud.fit', 'hubcloud.one'];
+    const defaultAllowed = [
+      'hubcloud.ist',
+      'hubcloud.club',
+      'hubcloud.art',
+      'hubcloud.fit',
+      'hubcloud.one',
+      'hubcloud.foo',
+      'hubcloud.dev',
+      'hubcloud.link',
+      'hubcloud.lol',
+      'hubcloud.vip',
+      'hubcloud.cc',
+      'hubcloud.work',
+      'hubcloud.to',
+    ];
+    const allowed = options.allowedHostnames || defaultAllowed;
 
     const matchesHost = allowed.some((host) => (
       parsed.hostname === host || parsed.hostname.endsWith(`.${host}`)
-    ));
+    )) || /^(?:[a-z0-9-]+\.)?hubcloud\.[a-z]{2,}$/i.test(parsed.hostname);
 
     const matchesPath = parsed.pathname.startsWith('/drive/');
 
@@ -43,6 +58,7 @@ export function isHubCloudDriveUrl(urlString, options = {}) {
 /**
  * Extracts the dynamic drive ID from a verified HubCloud URL.
  * Example: https://hubcloud.ist/drive/d3vug2udf3bu8iv -> d3vug2udf3bu8iv
+ * Example: https://hubcloud.foo/drive/packs/pabwogokpa9zfaf -> pabwogokpa9zfaf
  * 
  * @param {string} urlString
  * @returns {string|null}
@@ -54,7 +70,7 @@ export function extractHubCloudDriveId(urlString) {
 
   try {
     const parsed = new URL(urlString);
-    const match = parsed.pathname.match(/^\/drive\/([a-zA-Z0-9_-]+)/);
+    const match = parsed.pathname.match(/^\/drive\/(?:packs\/)?([a-zA-Z0-9_-]+)/);
     return match ? match[1] : null;
   } catch {
     return null;
@@ -68,13 +84,16 @@ export function extractHubCloudDriveId(urlString) {
  * @param {string} hubcloudUrl Verified HubCloud drive destination URL
  * @returns {Promise<{ filename: string, title: string, quality?: string }|null>}
  */
-export async function fetchHubCloudMetadata(hubcloudUrl) {
+export async function fetchHubCloudMetadata(hubcloudUrl, options = {}) {
   if (!isHubCloudDriveUrl(hubcloudUrl)) {
     return null;
   }
 
   try {
-    const res = await fetchWithControls(hubcloudUrl);
+    const res = await fetchWithControls(hubcloudUrl, {
+      maxRetries: options.maxRetries ?? 0,
+      timeout: options.timeout ?? 3500,
+    });
     if (!res.success || !res.body) {
       return null;
     }

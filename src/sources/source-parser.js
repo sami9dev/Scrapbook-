@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { resolveRelativeUrl } from '../utils/url.js';
+import { resolveRelativeUrl, normalizeNexdriveUrl } from '../utils/url.js';
 import { providerRegistry } from '../providers/provider-registry.js';
 import { logger } from '../logging/logger.js';
 
@@ -59,7 +59,8 @@ export function extractYear(text) {
  */
 export function extractSeason(text) {
   if (!text) return null;
-  const match = text.match(/(?:^|[^a-zA-Z0-9])(?:s|season)\s*(\d{1,2})(?:e\d{1,3}|[^\d]|$)/i);
+  const sanitized = text.replace(/\bds4k\b/gi, '').replace(/\b4k\b/gi, '');
+  const match = sanitized.match(/(?:^|[^a-zA-Z0-9])(?:season\s*|s)(\d{1,2})(?:e\d{1,3}|[^\d]|$)/i);
   return match ? parseInt(match[1], 10) : null;
 }
 
@@ -68,7 +69,7 @@ export function extractSeason(text) {
  */
 export function extractEpisode(text) {
   if (!text) return null;
-  const match = text.match(/(?:^|[^a-zA-Z0-9]|s\d{1,2})(?:e|ep|episode)\s*(\d{1,3})(?:[^\d]|$)/i);
+  const match = text.match(/(?:^|[^a-zA-Z0-9]|s\d{1,2})(?:e|ep|episodes?)\s*[:\s-]*(\d{1,3})(?:[^\d]|$)/i);
   return match ? parseInt(match[1], 10) : null;
 }
 
@@ -136,9 +137,10 @@ export function parseSourcePage(html, sourceUrl) {
 
   // Extract structured metadata
   const year = extractYear(rawTitle) || extractYear(fullText);
-  const season = extractSeason(rawTitle) || extractSeason(fullText);
-  const episode = extractEpisode(rawTitle) || extractEpisode(fullText);
-  const isTv = season !== null || episode !== null || /\b(tv series|tv show|season|episodes)\b/i.test(rawTitle + ' ' + fullText);
+  const isMovieUrl = /\/movies?\//i.test(sourceUrl) || /-movie(?:-\d+)?\/?$/i.test(sourceUrl);
+  const season = isMovieUrl ? null : (extractSeason(rawTitle) || extractSeason(fullText));
+  const episode = isMovieUrl ? null : (extractEpisode(rawTitle) || extractEpisode(fullText));
+  const isTv = !isMovieUrl && (season !== null || episode !== null || /\b(tv series|tv show|season|episodes)\b/i.test(rawTitle + ' ' + fullText));
   const type = isTv ? 'tv' : 'movie';
   const quality = extractQuality(rawTitle) || extractQuality(fullText) || null;
   const codec = extractCodec(rawTitle) || extractCodec(fullText) || null;
@@ -166,11 +168,16 @@ export function parseSourcePage(html, sourceUrl) {
 
   $('a[href]').each((_, el) => {
     const rawHref = $(el).attr('href');
-    const resolved = resolveRelativeUrl(sourceUrl, rawHref);
+    let resolved = resolveRelativeUrl(sourceUrl, rawHref);
     if (!resolved) return;
 
+    // Normalize any Nexdrive mirror domain to canonical https://nexdrive.beer/genxfm
+    if (/nexdrive\.[a-z]{2,}\/genxfm/i.test(resolved)) {
+      resolved = normalizeNexdriveUrl(resolved);
+    }
+
     // Filter out standard non-download WordPress / administrative & taxonomy paths
-    if (/(?:wp-login|wp-admin|\/feed|\/tag\/|\/category\/|\/genre\/|\/quality\/|\/year\/|\/author\/|privacy-policy|contact-us|dmca|how-to-download|terms)/i.test(resolved)) {
+    if (/(?:wp-login|wp-admin|\/feed|\/tag\/|category|uncategorized|\/genre\/|\/quality\/|\/year\/|\/author\/|privacy-policy|contact-us|dmca|how-to-download|terms)/i.test(resolved)) {
       return;
     }
 
@@ -184,6 +191,7 @@ export function parseSourcePage(html, sourceUrl) {
 
     const linkText = $(el).text().trim();
     const className = $(el).attr('class') || '';
+    const childBtnClass = $(el).find('button').attr('class') || '';
     const id = $(el).attr('id') || '';
 
     // Check if this link matches a known provider
@@ -196,7 +204,9 @@ export function parseSourcePage(html, sourceUrl) {
 
     const isCandidate =
       matchedProvider !== null ||
-      /(?:download|btn|button|drive|file|intermediate|redirect|cmz-btn)/i.test(`${linkText} ${className} ${id} ${rawHref}`) ||
+      /vcloud/i.test(resolved) ||
+      /nexdrive\.[a-z]{2,}\/genxfm/i.test(resolved) ||
+      /(?:download|btn|button|drive|file|intermediate|redirect|cmz-btn|vcloud|nexdrive|genxfm)/i.test(`${linkText} ${className} ${childBtnClass} ${id} ${rawHref}`) ||
       // Single-letter button text e.g. "G" from section 3
       /^[a-zA-Z]$/.test(linkText) ||
       (isInsideDownloadContainer && !resolved.endsWith('/') && !resolved.includes('#'));
@@ -217,11 +227,44 @@ export function parseSourcePage(html, sourceUrl) {
       const rowSeason = extractSeason(rowTitle);
       const rowEpisode = extractEpisode(rowTitle);
 
-      const linkQuality = rowQuality || extractQuality(containerText) || extractQuality(linkText) || null;
-      const linkCodec = rowCodec || extractCodec(containerText) || extractCodec(linkText) || null;
-      const linkSize = extractSizeDisplay(linkText) || extractSizeDisplay(containerText) || null;
-      const linkSeason = rowSeason ?? extractSeason(containerText) ?? season;
-      const linkEpisode = rowEpisode ?? extractEpisode(containerText) ?? null;
+      // Preceding header text (e.g. <h5>... 480p x264 [150MB/E]</h5> or <h4>-:Episodes: 1:-</h4>)
+      let prevHeaderText = null;
+      if (container.length > 0) {
+        let prevHeader = container.prevAll('h1, h2, h3, h4, h5, h6').first();
+        if (prevHeader.length === 0 && container.parent().length > 0) {
+          prevHeader = container.parent().prevAll('h1, h2, h3, h4, h5, h6').first();
+        }
+        if (prevHeader.length > 0) {
+          prevHeaderText = prevHeader.text().replace(/\s+/g, ' ').trim();
+        }
+      }
+
+      const linkQuality = rowQuality || extractQuality(containerText) || extractQuality(linkText) || (prevHeaderText ? extractQuality(prevHeaderText) : null) || null;
+      const linkCodec = rowCodec || extractCodec(containerText) || extractCodec(linkText) || (prevHeaderText ? extractCodec(prevHeaderText) : null) || null;
+      const linkSize = extractSizeDisplay(linkText) || (prevHeaderText ? extractSizeDisplay(prevHeaderText) : null) || extractSizeDisplay(containerText) || null;
+      const linkSeason = rowSeason ?? extractSeason(containerText) ?? (prevHeaderText ? extractSeason(prevHeaderText) : null) ?? season;
+      let linkEpisode = rowEpisode ?? extractEpisode(containerText) ?? (prevHeaderText ? extractEpisode(prevHeaderText) : null) ?? null;
+
+      const isBatch = /(?:batch|zip)/i.test(`${linkText} ${rawHref} ${resolved}`);
+      let linkScope = 'episode';
+      if (isBatch) {
+        linkScope = 'pack';
+      } else if (linkEpisode !== null && linkEpisode !== undefined) {
+        linkScope = 'episode';
+      } else if (isMovieUrl || type === 'movie') {
+        linkScope = 'movie';
+      } else {
+        linkScope = 'episode';
+      }
+
+      let provName = matchedProvider ? matchedProvider.name : null;
+      if (!provName) {
+        if (/vcloud/i.test(resolved) || /v-?cloud/i.test(linkText)) {
+          provName = 'V-Cloud';
+        } else if (/nexdrive\.[a-z]{2,}\/genxfm/i.test(resolved)) {
+          provName = 'Nexdrive';
+        }
+      }
 
       discoveredLinks.push({
         resolvedUrl: resolved,
@@ -229,18 +272,50 @@ export function parseSourcePage(html, sourceUrl) {
         buttonText: linkText,
         rowTitle: rowTitle || null,
         filename: rowTitle || null,
-        provider: matchedProvider ? matchedProvider.name : null,
-        isIntermediate: matchedProvider === null, // If not matched to external provider yet, might be intermediate
+        sectionTitle: prevHeaderText || null,
+        provider: provName,
+        isIntermediate: provName === null || provName === 'Nexdrive',
         quality: linkQuality,
         codec: linkCodec,
         sizeDisplay: linkSize,
         season: linkSeason,
         episode: linkEpisode,
+        scope: linkScope,
       });
     }
   });
 
-  logger.parsing(`Parsed source page: "${cleanTitle}" (${year || 'unknown year'}), ${discoveredLinks.length} candidate links found`);
+  // Prioritize V-Cloud links when multiple mirrors exist for an item/episode/quality tier
+  const hasVCloudLinks = discoveredLinks.some(
+    (l) => /vcloud/i.test(l.resolvedUrl) || l.provider === 'V-Cloud' || /v-?cloud/i.test(l.buttonText || '')
+  );
+  let finalDiscoveredLinks = discoveredLinks;
+  if (hasVCloudLinks) {
+    const isVCloudLink = (l) =>
+      /vcloud/i.test(l.resolvedUrl) || l.provider === 'V-Cloud' || /v-?cloud/i.test(l.buttonText || '');
+
+    const groupMap = new Map();
+    for (const link of discoveredLinks) {
+      const sectionKey = link.rowTitle || link.sectionTitle || `${link.quality || 'unknown'}_${link.season ?? 'all'}`;
+      const groupKey = `${sectionKey}_${link.episode ?? 'all'}_${link.scope || 'episode'}`;
+      if (!groupMap.has(groupKey)) {
+        groupMap.set(groupKey, []);
+      }
+      groupMap.get(groupKey).push(link);
+    }
+
+    finalDiscoveredLinks = [];
+    for (const [, links] of groupMap.entries()) {
+      const vcloudLinks = links.filter(isVCloudLink);
+      if (vcloudLinks.length > 0) {
+        finalDiscoveredLinks.push(...vcloudLinks);
+      } else {
+        finalDiscoveredLinks.push(...links);
+      }
+    }
+  }
+
+  logger.parsing(`Parsed source page: "${cleanTitle}" (${year || 'unknown year'}), ${finalDiscoveredLinks.length} candidate links found`);
 
   return {
     sourceUrl,
@@ -256,7 +331,7 @@ export function parseSourcePage(html, sourceUrl) {
     audio,
     languages,
     sizeDisplay,
-    discoveredLinks,
+    discoveredLinks: finalDiscoveredLinks,
   };
 }
 

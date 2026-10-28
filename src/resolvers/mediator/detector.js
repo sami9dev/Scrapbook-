@@ -34,6 +34,14 @@ export const VERIFY_PATTERNS = [
   /click\s*here\s*to\s*continue/i,
 ];
 
+export const INVALID_LINK_PATTERNS = [
+  /invalid\s*link/i,
+  /failed\s*to\s*decode\s*link/i,
+  /link\s*(?:has\s*)?(?:expired|deleted)/i,
+  /file\s*(?:not\s*found|deleted|is\s*deleted)/i,
+  /link\s*not\s*found/i,
+];
+
 /**
  * Checks whether the current page context exhibits a human verification challenge.
  * NEVER attempts to solve or bypass.
@@ -289,12 +297,49 @@ export async function detectVerifyControl(page) {
   }
 }
 
+/**
+ * Inspects whether the page indicates an invalid, expired, or dead link.
+ * 
+ * @param {import('playwright').Page} page
+ * @returns {Promise<{ isInvalid: boolean, reason?: string }>}
+ */
+export async function detectInvalidLinkInPage(page) {
+  try {
+    return await page.evaluate((patterns) => {
+      const title = (document.title || '').trim().toLowerCase();
+      const text = (document.body ? document.body.innerText : '').trim().toLowerCase();
+
+      for (const pStr of patterns) {
+        const regex = new RegExp(pStr, 'i');
+        if (regex.test(title)) {
+          return { isInvalid: true, reason: `Title contains: "${title}"` };
+        }
+        if (text.length < 500 && regex.test(text)) {
+          return { isInvalid: true, reason: `Page text: "${text.slice(0, 100).trim()}"` };
+        }
+        const elements = Array.from(document.querySelectorAll('h1, h2, h3, h4, .error, .alert, p, b, strong'));
+        for (const el of elements) {
+          const elText = (el.innerText || '').trim();
+          if (elText.length > 0 && elText.length < 150 && regex.test(elText)) {
+            return { isInvalid: true, reason: `Element matches: "${elText}"` };
+          }
+        }
+      }
+      return { isInvalid: false };
+    }, INVALID_LINK_PATTERNS.map((p) => p.source));
+  } catch (err) {
+    return { isInvalid: false, error: err.message };
+  }
+}
+
 export default {
   detectChallengeInPage,
   detectCountdownInPage,
   detectGetLinkControl,
   detectVerifyControl,
+  detectInvalidLinkInPage,
   CAPTCHA_SIGNATURES,
   GET_LINK_PATTERNS,
   VERIFY_PATTERNS,
+  INVALID_LINK_PATTERNS,
 };

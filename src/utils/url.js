@@ -167,6 +167,11 @@ export function validateUrl(inputUrl, options = {}) {
   if (allowed.length > 0) {
     const isAllowed = allowed.some((domain) => {
       const d = domain.toLowerCase();
+      if (d === 'hubcloud' || d === 'hubcloud.*' || d.startsWith('hubcloud.')) {
+        if (/^(?:[a-z0-9-]+\.)?hubcloud\.[a-z]{2,}$/i.test(hostname)) {
+          return true;
+        }
+      }
       return hostname === d || hostname.endsWith(`.${d}`);
     });
 
@@ -181,7 +186,7 @@ export function validateUrl(inputUrl, options = {}) {
   return {
     valid: true,
     url: parsed,
-    normalizedUrl: parsed.toString(),
+    normalizedUrl: normalizeNexdriveUrl(parsed.toString()),
   };
 }
 
@@ -206,3 +211,16 @@ export function resolveRelativeUrl(baseUrl, relativeUrl) {
     return null;
   }
 }
+
+/**
+ * Normalizes any Nexdrive mirror domain to canonical https://nexdrive.beer/genxfm.
+ * E.g., https://nexdrive.fit/genxfm784776274472/ -> https://nexdrive.beer/genxfm784776274472/
+ * 
+ * @param {string} url
+ * @returns {string}
+ */
+export function normalizeNexdriveUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  return url.replace(/^https?:\/\/(?:[a-z0-9-]+\.)?nexdrive\.[a-z]{2,}\/genxfm/i, 'https://nexdrive.beer/genxfm');
+}
+

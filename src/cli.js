@@ -6,6 +6,7 @@ import { fetchWithControls } from './discovery/http-client.js';
 import { discoverExposedDestination } from './discovery/link-discovery.js';
 import { providerRegistry } from './providers/provider-registry.js';
 import './providers/gdflix.js';
+import './providers/vcloud.js';
 
 function decodeFileToken(url) {
   if (!url) return null;
