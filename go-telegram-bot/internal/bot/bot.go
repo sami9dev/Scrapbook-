@@ -171,7 +171,7 @@ func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
 		sb.WriteString(fmt.Sprintf("📁 <b>Total Available Releases:</b> %d\n\n", series.Total))
 		sb.WriteString("🎬 <b>MOVIE DOWNLOADS:</b>\n\n")
 
-		for _, m := range series.Episodes {
+		for idx, m := range series.Episodes {
 			dest := m.ProviderURL
 			if dest == "" {
 				dest = m.MediatorURL
@@ -185,8 +185,14 @@ func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
 			if name == "" {
 				name = m.Title
 			}
-			sb.WriteString(fmt.Sprintf("📄 <b>%s</b>\n%s⚡ %s\n🔗 %s\n\n",
-				html.EscapeString(name), sizePart, strings.ToUpper(m.Quality), dest))
+			destLabel := "Destination:"
+			if strings.Contains(dest, "hubcloud") {
+				destLabel = "HubCloud:"
+			} else {
+				destLabel = "Mediator Link (Resolving in background):"
+			}
+			sb.WriteString(fmt.Sprintf("<b>#%d:</b> <a href=\"%s\">%s</a>\n%s⚡ %s\n%s %s\n\n",
+				idx+1, dest, html.EscapeString(name), sizePart, strings.ToUpper(m.Quality), destLabel, dest))
 		}
 
 		if statusMsg != nil {
@@ -225,7 +231,7 @@ func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
 
 	if len(series.Packs) > 0 {
 		sb.WriteString("📦 <b>SEASON PACKS:</b>\n\n")
-		for _, p := range series.Packs {
+		for idx, p := range series.Packs {
 			dest := p.ProviderURL
 			if dest == "" {
 				dest = p.MediatorURL
@@ -238,12 +244,14 @@ func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
 			if name == "" {
 				name = p.Title
 			}
-			linkPrefix := "🔗"
+			destLabel := "Destination:"
 			if strings.Contains(dest, "hubcloud") {
-				linkPrefix = "✅ <b>HubCloud:</b>"
+				destLabel = "HubCloud:"
+			} else {
+				destLabel = "Mediator Link (Resolving in background):"
 			}
-			sb.WriteString(fmt.Sprintf("📦 <b>%s</b>\n💾 %s | %s\n%s %s\n\n",
-				html.EscapeString(name), sizeStr, strings.ToUpper(p.Quality), linkPrefix, dest))
+			sb.WriteString(fmt.Sprintf("<b>#%d:</b> <a href=\"%s\">%s</a>\n💾 %s | ⚡ %s\n%s %s\n\n",
+				idx+1, dest, html.EscapeString(name), sizeStr, strings.ToUpper(p.Quality), destLabel, dest))
 		}
 	}
 
@@ -257,11 +265,14 @@ func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
 	if len(series.Episodes) > 0 {
 		var epLines []string
 		currentSeason := -1
+		epIdx := 0
 		for _, ep := range series.Episodes {
 			if ep.Season != currentSeason {
 				currentSeason = ep.Season
-				epLines = append(epLines, fmt.Sprintf("\n<b>📺 ════════ SEASON %d EPISODES ════════</b>\n", currentSeason))
+				epIdx = 0
+				epLines = append(epLines, fmt.Sprintf("📺 ════════ SEASON %d EPISODES ════════", currentSeason))
 			}
+			epIdx++
 			dest := ep.ProviderURL
 			if dest == "" {
 				dest = ep.MediatorURL
@@ -275,12 +286,14 @@ func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
 			if name == "" {
 				name = ep.Title
 			}
-			linkPrefix := "🔗"
+			destLabel := "Destination:"
 			if strings.Contains(dest, "hubcloud") {
-				linkPrefix = "✅ <b>HubCloud:</b>"
+				destLabel = "HubCloud:"
+			} else {
+				destLabel = "Mediator Link (Resolving in background):"
 			}
-			epLines = append(epLines, fmt.Sprintf("📄 <b>%s</b>\n%s⚡ %s\n%s %s\n",
-				html.EscapeString(name), sizePart, strings.ToUpper(ep.Quality), linkPrefix, dest))
+			epLines = append(epLines, fmt.Sprintf("<b>#%d:</b> <a href=\"%s\">%s</a>\n%s⚡ %s\n%s %s",
+				epIdx, dest, html.EscapeString(name), sizePart, strings.ToUpper(ep.Quality), destLabel, dest))
 		}
 
 		header := fmt.Sprintf("📺 <b>%s — ALL EPISODES</b>", html.EscapeString(series.Title))
@@ -350,7 +363,11 @@ func (b *Bot) handleDownloadLinks(c tele.Context, matches []string) error {
 		if res.Err != nil {
 			itemSB.WriteString(fmt.Sprintf("Error: %s\n", res.Err.Error()))
 		} else {
-			itemSB.WriteString(fmt.Sprintf("Destination: %s\n", res.Destination))
+			destLabel := "Destination:"
+			if strings.Contains(res.Destination, "hubcloud") {
+				destLabel = "HubCloud:"
+			}
+			itemSB.WriteString(fmt.Sprintf("%s %s\n", destLabel, res.Destination))
 			itemSB.WriteString(fmt.Sprintf("Speed: %s\n", formatDuration(res.Duration)))
 		}
 		itemStr := itemSB.String()
