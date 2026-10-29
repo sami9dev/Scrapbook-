@@ -3,6 +3,7 @@ package pool
 import (
 	"context"
 	"sync"
+	"time"
 
 	"go-telegram-bot/internal/resolver"
 )
@@ -82,6 +83,9 @@ func (p *WorkerPool) ResolveBatchWithProgress(urls []string, onProgress func(res
 
 	resultChans := make([]<-chan resolver.Result, count)
 	for i, u := range urls {
+		if i > 0 {
+			time.Sleep(3 * time.Second)
+		}
 		resultChans[i] = p.Submit(u)
 	}
 

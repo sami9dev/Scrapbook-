@@ -229,6 +229,12 @@ func (r *Resolver) Resolve(ctx context.Context, rawURL string) Result {
 	// 2. Resolve via Local Scraper Daemon (with browser & Turnstile engine)
 	dest, title, err := r.resolveViaBackend(ctx, rawURL)
 	if err != nil {
+		// Auto-retry once after a short 2-second pause if first attempt failed/timed out
+		log.Printf("[Resolver] First attempt failed for %s (%v). Auto-retrying once...", rawURL, err)
+		time.Sleep(2 * time.Second)
+		dest, title, err = r.resolveViaBackend(ctx, rawURL)
+	}
+	if err != nil {
 		// Fallback: Attempt direct HTTP redirect inspection
 		dest, err = r.resolveDirectRedirects(ctx, rawURL)
 	}
