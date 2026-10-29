@@ -28,6 +28,11 @@ export async function createApp() {
   // REST API Routes
   app.use('/api', apiRoutes);
 
+  // Health check for Render / UptimeRobot keep-alive
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+  });
+
   // Fallback to Admin UI for root
   app.get('/', (req, res) => {
     res.sendFile(path.join(publicDir, 'index.html'));

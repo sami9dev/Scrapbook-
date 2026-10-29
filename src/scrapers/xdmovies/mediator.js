@@ -15,7 +15,7 @@ import { isHubCloudDriveUrl, fetchHubCloudMetadata } from '../../providers/hubcl
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const SCRAPLING_PYTHON = 'C:\\Users\\sk621\\AppData\\Roaming\\uv\\tools\\scrapling\\Scripts\\python.exe';
+const SCRAPLING_PYTHON = process.env.SCRAPLING_PYTHON || (process.platform === 'win32' ? 'C:\\Users\\sk621\\AppData\\Roaming\\uv\\tools\\scrapling\\Scripts\\python.exe' : 'python3');
 const SCRAPLING_RESOLVER = path.join(__dirname, 'scrapling_resolver.py');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

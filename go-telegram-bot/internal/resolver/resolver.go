@@ -9,9 +9,10 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"go-telegram-bot/internal/cache"
@@ -131,12 +132,16 @@ func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*Serie
 		log.Printf("[Auto-Scrape] Initiating on-demand scrape for: %s", rawURL)
 		scrapeCtx, cancel := context.WithTimeout(ctx, 75*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(scrapeCtx, "node", "C:\\Users\\sk621\\scraper\\scratch\\scrape_url.js", rawURL)
-		cmd.Dir = "C:\\Users\\sk621\\scraper"
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,
-			CreationFlags: 0x08000000, // CREATE_NO_WINDOW
+
+		scraperDir := os.Getenv("SCRAPER_DIR")
+		if scraperDir == "" {
+			scraperDir = "C:\\Users\\sk621\\scraper"
 		}
+		scriptPath := filepath.Join(scraperDir, "scratch", "scrape_url.js")
+
+		cmd := exec.CommandContext(scrapeCtx, "node", scriptPath, rawURL)
+		cmd.Dir = scraperDir
+		setSysProcAttr(cmd)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			log.Printf("[Auto-Scrape] Failed: %v | Output: %s", err, string(out))

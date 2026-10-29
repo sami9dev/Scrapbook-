@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: linkscrap-bot
+    env: docker
+    plan: free
+    region: oregon
+    dockerfilePath: Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: NODE_ENV
+        value: "production"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: WORKER_CONCURRENCY
+        value: "5"
+      - key: RESOLVER_LOCAL_API
+        value: "http://127.0.0.1:10000/api/resolve-link"
