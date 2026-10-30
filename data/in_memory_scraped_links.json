@@ -12,14 +12,14 @@
     "quality": "720p",
     "codec": "x264",
     "provider": "HUBCLOUD",
-    "providerUrl": "https://link.xdmovies.wtf/download/eB96yzGeGjrw16nIQmnVtjSnT164KA0pAmYKtNqo2sw",
+    "providerUrl": "https://hubcloud.ist/drive/3ic6nsnhb1psp76",
     "mediatorUrl": "https://link.xdmovies.wtf/download/eB96yzGeGjrw16nIQmnVtjSnT164KA0pAmYKtNqo2sw",
-    "fileId": "eB96yzGeGjrw16nIQmnVtjSnT164KA0pAmYKtNqo2sw",
+    "fileId": "3ic6nsnhb1psp76",
     "filename": "Mirzapur.The.Movie.2026.720p.AMZN.WEB-DL.DDP5.1.H.264-XDMovies.com.mkv",
     "format": "mkv",
     "sizeBytes": 0,
     "sizeDisplay": "4.62 GB",
-    "status": "DISCOVERED"
+    "status": "RESOLVED"
   },
   {
     "_id": "mirzapur_720p_hevc",
@@ -34,14 +34,14 @@
     "quality": "720p",
     "codec": "HEVC",
     "provider": "HUBCLOUD",
-    "providerUrl": "https://link.xdmovies.wtf/download/z2QEGj3Ont3XWgkI8uzlY4K6kVgVOiTrMTleOPgl4CU",
+    "providerUrl": "https://hubcloud.ist/drive/iwlf3ojxfqjifqq",
     "mediatorUrl": "https://link.xdmovies.wtf/download/z2QEGj3Ont3XWgkI8uzlY4K6kVgVOiTrMTleOPgl4CU",
-    "fileId": "z2QEGj3Ont3XWgkI8uzlY4K6kVgVOiTrMTleOPgl4CU",
+    "fileId": "iwlf3ojxfqjifqq",
     "filename": "Mirzapur.The.Movie.2026.720p.AMZN.WEB-DL.DDP5.1.H.265-XDMovies.com.mkv",
     "format": "mkv",
     "sizeBytes": 0,
     "sizeDisplay": "1.20 GB",
-    "status": "DISCOVERED"
+    "status": "RESOLVED"
   },
   {
     "_id": "mirzapur_1080p_x264",
@@ -56,14 +56,14 @@
     "quality": "1080p",
     "codec": "x264",
     "provider": "HUBCLOUD",
-    "providerUrl": "https://link.xdmovies.wtf/download/1wpRgMOMyQ2oOwJcQIHEWuX4XwQDs83wAWCA47Y9czo",
+    "providerUrl": "https://hubcloud.ist/drive/xvro3xsrgd1eqkd",
     "mediatorUrl": "https://link.xdmovies.wtf/download/1wpRgMOMyQ2oOwJcQIHEWuX4XwQDs83wAWCA47Y9czo",
-    "fileId": "1wpRgMOMyQ2oOwJcQIHEWuX4XwQDs83wAWCA47Y9czo",
+    "fileId": "xvro3xsrgd1eqkd",
     "filename": "Mirzapur.The.Movie.2026.1080p.AMZN.WEB-DL.DDP5.1.H.264-XDMovies.com.mkv",
     "format": "mkv",
     "sizeBytes": 0,
     "sizeDisplay": "11.45 GB",
-    "status": "DISCOVERED"
+    "status": "RESOLVED"
   },
   {
     "_id": "mirzapur_1080p_hevc",
@@ -78,14 +78,14 @@
     "quality": "1080p",
     "codec": "HEVC",
     "provider": "HUBCLOUD",
-    "providerUrl": "https://link.xdmovies.wtf/download/ylEhRg-OXVbW-pLNZFMI_Ph8NvQsMib3tUBb_i55dEU",
+    "providerUrl": "https://hubcloud.ist/drive/ghdazdcungbzsdc",
     "mediatorUrl": "https://link.xdmovies.wtf/download/ylEhRg-OXVbW-pLNZFMI_Ph8NvQsMib3tUBb_i55dEU",
-    "fileId": "ylEhRg-OXVbW-pLNZFMI_Ph8NvQsMib3tUBb_i55dEU",
+    "fileId": "ghdazdcungbzsdc",
     "filename": "Mirzapur.The.Movie.2026.1080p.AMZN.WEB-DL.DDP5.1.H.265-XDMovies.com.mkv",
     "format": "mkv",
     "sizeBytes": 0,
     "sizeDisplay": "4.05 GB",
-    "status": "DISCOVERED"
+    "status": "RESOLVED"
   },
   {
     "_id": "mirzapur_1080p_av1",
@@ -100,14 +100,14 @@
     "quality": "1080p",
     "codec": "AV1",
     "provider": "HUBCLOUD",
-    "providerUrl": "https://link.xdmovies.wtf/download/AcKfdUaMX1VE-j4n1ebTg2uOd6xX1aGPwVsr9ZW1GEQ",
+    "providerUrl": "https://hubcloud.ist/drive/yowwzd7weuvdzzl",
     "mediatorUrl": "https://link.xdmovies.wtf/download/AcKfdUaMX1VE-j4n1ebTg2uOd6xX1aGPwVsr9ZW1GEQ",
-    "fileId": "AcKfdUaMX1VE-j4n1ebTg2uOd6xX1aGPwVsr9ZW1GEQ",
+    "fileId": "yowwzd7weuvdzzl",
     "filename": "Mirzapur.The.Movie.2026.1080p.AMZN.WEB-DL.DDP5.1.AV1-XDMovies.com.mkv",
     "format": "mkv",
     "sizeBytes": 0,
     "sizeDisplay": "2.25 GB",
-    "status": "DISCOVERED"
+    "status": "RESOLVED"
   },
   {
     "_id": "mirzapur_2160p_amzn",
@@ -122,14 +122,14 @@
     "quality": "2160p",
     "codec": "HEVC",
     "provider": "HUBCLOUD",
-    "providerUrl": "https://link.xdmovies.wtf/download/fM_lbbuBUSPFWWDmhlskKu0C0cw_diVMENIK8_dB26Q",
+    "providerUrl": "https://hubcloud.ist/drive/zmaq3m7awq3jqva",
     "mediatorUrl": "https://link.xdmovies.wtf/download/fM_lbbuBUSPFWWDmhlskKu0C0cw_diVMENIK8_dB26Q",
-    "fileId": "fM_lbbuBUSPFWWDmhlskKu0C0cw_diVMENIK8_dB26Q",
+    "fileId": "zmaq3m7awq3jqva",
     "filename": "Mirzapur.The.Movie.2026.2160p.AMZN.WEB-DL.DDP5.1.H.265-XDMovies.com.mkv",
     "format": "mkv",
     "sizeBytes": 0,
     "sizeDisplay": "23.08 GB",
-    "status": "DISCOVERED"
+    "status": "RESOLVED"
   },
   {
     "_id": "beast_2160p_xdmovies",
