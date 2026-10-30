@@ -6,6 +6,8 @@
  * and waiting for the client-side download cards/links to finish rendering.
  */
 
+process.env.PLAYWRIGHT_BROWSERS_PATH = process.env.PLAYWRIGHT_BROWSERS_PATH || '0';
+
 import { chromium } from 'patchright';
 import { logger } from '../../logging/logger.js';
 
@@ -29,23 +31,18 @@ export async function fetchXDMoviesPage(url, options = {}) {
 
   let browser = null;
   try {
-    // Launch Chrome with minimal, authentic flags
     const launchArgs = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
       '--disable-blink-features=AutomationControlled',
       '--enable-blink-features=FakeShadowRoot',
     ];
-    try {
-      browser = await chromium.launch({
-        channel: 'chrome',
-        headless,
-        args: launchArgs,
-      });
-    } catch {
-      browser = await chromium.launch({
-        headless,
-        args: launchArgs,
-      });
-    }
+    browser = await chromium.launch({
+      headless: true,
+      args: launchArgs,
+    });
 
     const page = await browser.newPage();
 

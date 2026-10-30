@@ -1233,29 +1233,46 @@ router.post('/resolve-link', async (req, res) => {
     }
 
     if (resolution.success && resolution.destination) {
+      let finalTitle = resolution.meta?.filename || resolution.meta?.title;
+      if (!finalTitle || finalTitle === link?.title || finalTitle === 'Unknown Title') {
+        const hubMeta = await fetchHubCloudMetadata(resolution.destination).catch(() => null);
+        if (hubMeta?.filename) {
+          finalTitle = hubMeta.filename;
+        }
+      }
+
       if (link) {
         link.providerUrl = resolution.destination;
         link.fileId = extractHubCloudDriveId(resolution.destination);
         link.status = 'RESOLVED';
-        let finalTitle = resolution.meta?.filename || resolution.meta?.title;
-        if (!finalTitle || finalTitle === link.title || finalTitle === 'Unknown Title') {
-          const hubMeta = await fetchHubCloudMetadata(resolution.destination);
-          if (hubMeta?.filename) {
-            finalTitle = hubMeta.filename;
-          }
-        }
         if (finalTitle) {
           link.filename = finalTitle;
           link.title = finalTitle;
         }
         await scrapedLinksRepo.saveLink(link);
+      } else {
+        // Auto-persist newly resolved standalone mediator link into catalogue!
+        const driveId = extractHubCloudDriveId(resolution.destination);
+        const autoDoc = {
+          sourceUrl: urlToResolve,
+          sourceDomain: 'link.xdmovies.wtf',
+          title: finalTitle || 'Movie Release',
+          filename: finalTitle || '',
+          scope: 'movie',
+          provider: 'HUBCLOUD',
+          providerUrl: resolution.destination,
+          mediatorUrl: urlToResolve,
+          fileId: driveId,
+          status: 'RESOLVED',
+        };
+        await scrapedLinksRepo.saveLink(autoDoc).catch(() => {});
       }
       return res.json({
         success: true,
         destination: resolution.destination,
         driveId: extractHubCloudDriveId(resolution.destination),
         state: resolution.state,
-        title: link?.filename || link?.title || resolution.meta?.filename || resolution.meta?.title || '',
+        title: link?.filename || link?.title || finalTitle || '',
       });
     } else {
       if (link) {
