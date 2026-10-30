@@ -114,6 +114,9 @@ func (r *Resolver) fetchAllStoredLinks(ctx context.Context) []StoredLink {
 
 	// Instant file fallback: read in_memory_scraped_links.json directly without needing a local node server
 	for _, p := range []string{
+		"/app/data/in_memory_scraped_links.json",
+		"../data/in_memory_scraped_links.json",
+		"data/in_memory_scraped_links.json",
 		"C:\\Users\\sk621\\scraper\\data\\in_memory_scraped_links.json",
 		"../scraper/data/in_memory_scraped_links.json",
 	} {
