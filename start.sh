@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+export PLAYWRIGHT_BROWSERS_PATH=0
 APP_PORT="${PORT:-10000}"
 
 echo "=================================================="

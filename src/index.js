@@ -1,3 +1,5 @@
+process.env.PLAYWRIGHT_BROWSERS_PATH = process.env.PLAYWRIGHT_BROWSERS_PATH || '0';
+
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

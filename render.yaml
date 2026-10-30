@@ -12,6 +12,8 @@ services:
         value: "10000"
       - key: NODE_ENV
         value: "production"
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: "0"
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: WORKER_CONCURRENCY

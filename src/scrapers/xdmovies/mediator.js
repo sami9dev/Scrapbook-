@@ -6,6 +6,8 @@
  * into the final HubCloud Drive destination URL.
  */
 
+process.env.PLAYWRIGHT_BROWSERS_PATH = process.env.PLAYWRIGHT_BROWSERS_PATH || '0';
+
 import { chromium } from 'patchright';
 import { execFile } from 'child_process';
 import path from 'path';
@@ -133,28 +135,52 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
   try {
     if (!browser) {
       const launchArgs = [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
         '--disable-blink-features=AutomationControlled',
         '--enable-blink-features=FakeShadowRoot',
-        '--headless=new',
       ];
       try {
         browser = await chromium.launch({
-          channel: 'chrome',
-          headless,
+          headless: true,
           args: launchArgs,
         });
-      } catch {
-        browser = await chromium.launch({
-          headless,
-          args: launchArgs,
-        });
+      } catch (launchErr) {
+        logger.error(`[XDMovies Mediator] Failed to launch browser: ${launchErr.message}`);
+        throw launchErr;
       }
       ownBrowser = true;
     }
 
-    const page = await browser.newPage({
+    const context = await browser.newContext({
       viewport: { width: 1280, height: 900 },
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
     });
+
+    let capturedDest = null;
+    const checkCaptured = (u) => {
+      if (u && isHubCloudDriveUrl(u)) {
+        capturedDest = canonicalHubCloudUrl(u);
+        return true;
+      }
+      return false;
+    };
+
+    context.on('page', (newPage) => {
+      newPage.on('framenavigated', (frame) => {
+        if (frame === newPage.mainFrame()) checkCaptured(frame.url());
+      });
+      newPage.on('request', (req) => checkCaptured(req.url()));
+      checkCaptured(newPage.url());
+    });
+
+    const page = await context.newPage();
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) checkCaptured(frame.url());
+    });
+    page.on('request', (req) => checkCaptured(req.url()));
 
     // Block intrusive ad and push tracker scripts to prevent popup clutter and slow load times
     await page.route(/(push-sdk\.com|dd133\.com|crn77\.com|aqle3\.com|s0-greate\.net)/i, (route) => route.abort());
@@ -263,17 +289,17 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
       }
 
       // Check if already reached Hubcloud (e.g. from fast redirect)
-      if (isHubCloudDriveUrl(curUrl)) {
+      if (capturedDest || isHubCloudDriveUrl(curUrl)) {
         break;
       }
 
       if (
-        curUrl.includes('latestnewsonline.sbs/r/') &&
+        (curUrl.includes('latestnewsonline.sbs') || curUrl.includes('link.xdmovies.')) &&
         !title.toLowerCase().includes('just a moment') &&
         !title.toLowerCase().includes('loading http')
       ) {
-        const hasGenBtn = await page.$('#generateBtn:not(.hidden)').catch(() => null);
-        if (hasGenBtn) {
+        const hasGenBtn = await page.$('#generateBtn, #continueBtn, #turnstileContainer, #goToLinkBtn').catch(() => null);
+        if (hasGenBtn || curUrl.includes('/r/')) {
           reachedMediatorPage = true;
           break;
         }
@@ -283,13 +309,13 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
       await sleep(2000);
     }
 
-    if (!reachedMediatorPage && !isHubCloudDriveUrl(page.url())) {
+    if (!reachedMediatorPage && !capturedDest && !isHubCloudDriveUrl(page.url())) {
       throw new Error(`Failed to land on mediator page: ${page.url()}`);
     }
 
     // Check if directly redirected to Hubcloud
-    if (isHubCloudDriveUrl(page.url())) {
-      const dest = canonicalHubCloudUrl(page.url());
+    if (capturedDest || isHubCloudDriveUrl(page.url())) {
+      const dest = capturedDest || canonicalHubCloudUrl(page.url());
       let metadata = null;
       try {
         metadata = await fetchHubCloudMetadata(dest);
@@ -422,14 +448,22 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
 
     // Step 8: Wait for final HubCloud destination URL
     logger.log('XDMovies', '[XDMovies Mediator] Waiting for final HubCloud destination navigation...');
-    let finalDestination = null;
+    let finalDestination = capturedDest || null;
     for (let w = 0; w < 30; w++) {
-      await sleep(1000);
-      const cur = page.url();
-      if (cur.startsWith('https://hubcloud.ist/drive/') || isHubCloudDriveUrl(cur)) {
-        finalDestination = cur;
-        break;
+      if (finalDestination) break;
+      for (const p of context.pages()) {
+        const pUrl = p.url();
+        if (checkCaptured(pUrl)) {
+          finalDestination = capturedDest;
+          break;
+        }
       }
+      if (finalDestination) break;
+      await sleep(1000);
+    }
+
+    if (!finalDestination && isHubCloudDriveUrl(page.url())) {
+      finalDestination = canonicalHubCloudUrl(page.url());
     }
 
     if (!finalDestination) {

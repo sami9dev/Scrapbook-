@@ -6,8 +6,8 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "build": "npx patchright install chromium || npx playwright install chromium || true",
-    "postinstall": "npx patchright install chromium || true",
+    "build": "PLAYWRIGHT_BROWSERS_PATH=0 npx patchright install chromium chromium-headless-shell || true",
+    "postinstall": "PLAYWRIGHT_BROWSERS_PATH=0 npx patchright install chromium chromium-headless-shell || true",
     "format": "node src/cli.js",
     "collect-links": "node src/tools/link-collector/cli.js",
     "test": "vitest run",
