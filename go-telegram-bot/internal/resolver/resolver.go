@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -178,6 +180,75 @@ func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*Serie
 	}
 
 	for _, m := range matched {
+		if m.Scope == "pack" {
+			sr.Packs = append(sr.Packs, m)
+		} else {
+			sr.Episodes = append(sr.Episodes, m)
+		}
+	}
+
+	return sr, nil
+}
+
+// SearchByTitle searches the cached releases by movie/series title keyword
+func (r *Resolver) SearchByTitle(ctx context.Context, titleQuery string) (*SeriesResult, error) {
+	allItems := r.fetchAllStoredLinks(ctx)
+	if len(allItems) == 0 {
+		return nil, errors.New("catalogue database is currently empty.")
+	}
+
+	normQuery := strings.ToLower(strings.TrimSpace(titleQuery))
+	if normQuery == "" {
+		return nil, errors.New("search query cannot be empty.")
+	}
+
+	// Group items by SourceURL
+	sourceGroups := make(map[string][]StoredLink)
+	for _, item := range allItems {
+		sourceGroups[item.SourceURL] = append(sourceGroups[item.SourceURL], item)
+	}
+
+	// Find best matching source group
+	var bestMatch []StoredLink
+	for src, items := range sourceGroups {
+		normSrc := strings.ToLower(src)
+		title := ""
+		if len(items) > 0 {
+			title = strings.ToLower(items[0].Title)
+		}
+		if strings.Contains(normSrc, normQuery) || (title != "" && strings.Contains(title, normQuery)) {
+			bestMatch = items
+			break
+		}
+	}
+
+	if len(bestMatch) == 0 {
+		var available []string
+		seen := make(map[string]bool)
+		for _, items := range sourceGroups {
+			if len(items) > 0 {
+				disp := extractDisplayTitle(items[0].Title)
+				if !seen[disp] {
+					seen[disp] = true
+					available = append(available, disp)
+				}
+			}
+		}
+		sort.Strings(available)
+		return nil, fmt.Errorf("no pre-indexed title matching '<b>%s</b>'.\n\n📚 <b>Available Pre-Indexed Titles:</b>\n• %s\n\n👉 <i>Or send the full XDMovies page link to resolve!</i>",
+			html.EscapeString(titleQuery), strings.Join(available, "\n• "))
+	}
+
+	isMovie := strings.Contains(strings.ToLower(bestMatch[0].SourceURL), "/movies/") || bestMatch[0].Scope == "movie"
+
+	sr := &SeriesResult{
+		Title:   extractDisplayTitle(bestMatch[0].Title),
+		URL:     bestMatch[0].SourceURL,
+		IsMovie: isMovie,
+		Total:   len(bestMatch),
+	}
+
+	for _, m := range bestMatch {
 		if m.Scope == "pack" {
 			sr.Packs = append(sr.Packs, m)
 		} else {

@@ -152,21 +152,43 @@ func (b *Bot) handleStats(c tele.Context) error {
 }
 
 func (b *Bot) handleText(c tele.Context) error {
-	text := c.Text()
+	text := strings.TrimSpace(c.Text())
 	matches := urlRegex.FindAllString(text, -1)
 
+	// 1. If text contains no URL, treat as title search!
 	if len(matches) == 0 {
-		return c.Send("ℹ️ Please send a valid link or multiple links to resolve.")
+		return b.handleTitleSearch(c, text)
 	}
 
-	// 1. Check if the URL is a Series or Movie content page
+	// 2. Check if the URL is a Series or Movie content page
 	firstURL := matches[0]
 	if b.resolver.IsContentPage(firstURL) {
 		return b.handleContentPage(c, firstURL)
 	}
 
-	// 2. Otherwise handle as download mediator links
+	// 3. Otherwise handle as download mediator links
 	return b.handleDownloadLinks(c, matches)
+}
+
+func (b *Bot) handleTitleSearch(c tele.Context, query string) error {
+	statusMsg, _ := b.teleBot.Send(c.Recipient(), fmt.Sprintf("🔍 <i>Searching catalogue for '<b>%s</b>'...</i>", html.EscapeString(query)), tele.ModeHTML)
+
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, err := b.resolver.SearchByTitle(ctx, query)
+	duration := time.Since(start)
+
+	if err != nil {
+		if statusMsg != nil {
+			_, _ = b.teleBot.Edit(statusMsg, err.Error(), tele.ModeHTML)
+			return nil
+		}
+		return c.Send(err.Error(), tele.ModeHTML)
+	}
+
+	return b.displaySeriesOrMovie(c, statusMsg, result, duration)
 }
 
 func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
@@ -193,15 +215,25 @@ func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
 		return c.Send(errMsg, tele.ModeHTML)
 	}
 
+	return b.displaySeriesOrMovie(c, statusMsg, series, duration)
+}
+
+func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, series *resolver.SeriesResult, duration time.Duration) error {
 	// Case A: Movie
 	if series.IsMovie {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("🎬 <b>%s</b>\n", html.EscapeString(series.Title)))
 		sb.WriteString(fmt.Sprintf("⚡ <i>Retrieved in %s</i>\n", formatDuration(duration)))
-		sb.WriteString(fmt.Sprintf("📁 <b>Total Available Releases:</b> %d\n\n", series.Total))
-		sb.WriteString("🎬 <b>MOVIE DOWNLOADS:</b>\n\n")
+		sb.WriteString(fmt.Sprintf("📁 <b>Available Releases:</b> %d\n\n", series.Total))
+		sb.WriteString("🎬 <b>MOVIE DOWNLOADS (BY QUALITY):</b>\n\n")
 
-		for idx, m := range series.Episodes {
+		// Sort movie releases by Quality: 2160p -> 1080p -> 720p -> 480p
+		releases := append([]resolver.StoredLink(nil), series.Episodes...)
+		sort.Slice(releases, func(i, j int) bool {
+			return qualityRank(releases[i].Quality) > qualityRank(releases[j].Quality)
+		})
+
+		for idx, m := range releases {
 			dest := m.ProviderURL
 			if dest == "" {
 				dest = m.MediatorURL
@@ -217,123 +249,175 @@ func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
 			}
 			destLabel := "Destination:"
 			if strings.Contains(dest, "hubcloud") {
-				destLabel = "HubCloud:"
+				destLabel = "⚡ HubCloud:"
 			} else {
-				destLabel = "Mediator Link (Resolving in background):"
+				destLabel = "🔗 Mediator Link:"
 			}
-			sb.WriteString(fmt.Sprintf("<b>#%d:</b> <a href=\"%s\">%s</a>\n%s⚡ %s\n%s %s\n\n",
-				idx+1, dest, html.EscapeString(name), sizePart, strings.ToUpper(m.Quality), destLabel, dest))
+			sb.WriteString(fmt.Sprintf("<b>#%d: ⚡ %s</b>\n%s<a href=\"%s\">%s</a>\n%s %s\n\n",
+				idx+1, strings.ToUpper(m.Quality), sizePart, dest, html.EscapeString(name), destLabel, dest))
 		}
 
 		if statusMsg != nil {
-			_, err = b.teleBot.Edit(statusMsg, sb.String(), tele.ModeHTML)
-			if err == nil {
+			if _, err := b.teleBot.Edit(statusMsg, sb.String(), tele.ModeHTML); err == nil {
 				return nil
 			}
 		}
 		return c.Send(sb.String(), tele.ModeHTML)
 	}
 
-	// Case B: Series
-	sort.Slice(series.Packs, func(i, j int) bool {
-		if series.Packs[i].Season != series.Packs[j].Season {
-			return series.Packs[i].Season < series.Packs[j].Season
-		}
-		return series.Packs[i].Quality > series.Packs[j].Quality
-	})
+	// Case B: TV Series
+	type qualityOpt struct {
+		quality string
+		size    string
+		url     string
+	}
 
-	sort.Slice(series.Episodes, func(i, j int) bool {
-		if series.Episodes[i].Season != series.Episodes[j].Season {
-			return series.Episodes[i].Season < series.Episodes[j].Season
+	// 1. Group Season Packs by Season
+	packMap := make(map[int][]qualityOpt)
+	for _, p := range series.Packs {
+		dest := p.ProviderURL
+		if dest == "" {
+			dest = p.MediatorURL
 		}
-		if series.Episodes[i].Episode != series.Episodes[j].Episode {
-			return series.Episodes[i].Episode < series.Episodes[j].Episode
+		s := p.Season
+		if s == 0 {
+			s = 1
 		}
-		return series.Episodes[i].Quality > series.Episodes[j].Quality
-	})
+		q := p.Quality
+		if q == "" {
+			q = "HD"
+		}
+		packMap[s] = append(packMap[s], qualityOpt{
+			quality: strings.ToUpper(q),
+			size:    p.SizeDisplay,
+			url:     dest,
+		})
+	}
 
-	// --- MESSAGE 1: Series Overview & All Season Packs ---
+	// Sort season numbers
+	var seasons []int
+	for s := range packMap {
+		seasons = append(seasons, s)
+	}
+	sort.Ints(seasons)
+
+	// --- MESSAGE 1: Series Overview & Season Complete Packs ---
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("🎬 <b>%s</b>\n", html.EscapeString(series.Title)))
 	sb.WriteString(fmt.Sprintf("⚡ <i>Retrieved in %s</i>\n", formatDuration(duration)))
 	sb.WriteString(fmt.Sprintf("📁 <b>Total Items:</b> %d (%d Season Packs + %d Episodes)\n\n",
 		series.Total, len(series.Packs), len(series.Episodes)))
 
-	if len(series.Packs) > 0 {
-		sb.WriteString("📦 <b>SEASON PACKS:</b>\n\n")
-		for idx, p := range series.Packs {
-			dest := p.ProviderURL
-			if dest == "" {
-				dest = p.MediatorURL
+	if len(seasons) > 0 {
+		sb.WriteString("📦 <b>SEASON COMPLETE PACKS:</b>\n\n")
+		for _, s := range seasons {
+			opts := packMap[s]
+			sort.Slice(opts, func(i, j int) bool {
+				return qualityRank(opts[i].quality) > qualityRank(opts[j].quality)
+			})
+			sb.WriteString(fmt.Sprintf("<b>• Season %d Complete:</b>\n", s))
+			var linkParts []string
+			for _, o := range opts {
+				sizeLabel := ""
+				if o.size != "" {
+					sizeLabel = fmt.Sprintf(" (%s)", o.size)
+				}
+				linkParts = append(linkParts, fmt.Sprintf("⚡ <a href=\"%s\">%s%s</a>", o.url, o.quality, sizeLabel))
 			}
-			sizeStr := p.SizeDisplay
-			if sizeStr == "" {
-				sizeStr = "Full Pack"
-			}
-			name := p.Filename
-			if name == "" {
-				name = p.Title
-			}
-			destLabel := "Destination:"
-			if strings.Contains(dest, "hubcloud") {
-				destLabel = "HubCloud:"
-			} else {
-				destLabel = "Mediator Link (Resolving in background):"
-			}
-			sb.WriteString(fmt.Sprintf("<b>#%d:</b> <a href=\"%s\">%s</a>\n💾 %s | ⚡ %s\n%s %s\n\n",
-				idx+1, dest, html.EscapeString(name), sizeStr, strings.ToUpper(p.Quality), destLabel, dest))
+			sb.WriteString(strings.Join(linkParts, " | "))
+			sb.WriteString("\n\n")
 		}
 	}
 
 	if statusMsg != nil {
 		if _, err := b.teleBot.Edit(statusMsg, sb.String(), tele.ModeHTML); err != nil {
-			log.Printf("[Bot] Failed to edit statusMsg: %v. Sending direct message...", err)
 			_, _ = b.teleBot.Send(c.Recipient(), sb.String(), tele.ModeHTML)
 		}
 	} else {
 		_, _ = b.teleBot.Send(c.Recipient(), sb.String(), tele.ModeHTML)
 	}
 
-	// --- MESSAGE 2+: All Episodes with Full Release Titles ---
+	// --- MESSAGE 2: Group Episodes by (Season, Episode) -> Qualities ---
 	if len(series.Episodes) > 0 {
-		var epLines []string
-		currentSeason := -1
-		epIdx := 0
+		type epKey struct {
+			Season  int
+			Episode int
+		}
+		epMap := make(map[epKey][]qualityOpt)
+		var epKeys []epKey
+
 		for _, ep := range series.Episodes {
-			if ep.Season != currentSeason {
-				currentSeason = ep.Season
-				epIdx = 0
-				epLines = append(epLines, fmt.Sprintf("📺 ════════ SEASON %d EPISODES ════════", currentSeason))
-			}
-			epIdx++
 			dest := ep.ProviderURL
 			if dest == "" {
 				dest = ep.MediatorURL
 			}
-			sizeStr := ep.SizeDisplay
-			sizePart := ""
-			if sizeStr != "" {
-				sizePart = fmt.Sprintf("💾 %s | ", sizeStr)
+			q := ep.Quality
+			if q == "" {
+				q = "HD"
 			}
-			name := ep.Filename
-			if name == "" {
-				name = ep.Title
+			k := epKey{Season: ep.Season, Episode: ep.Episode}
+			if len(epMap[k]) == 0 {
+				epKeys = append(epKeys, k)
 			}
-			destLabel := "Destination:"
-			if strings.Contains(dest, "hubcloud") {
-				destLabel = "HubCloud:"
-			} else {
-				destLabel = "Mediator Link (Resolving in background):"
-			}
-			epLines = append(epLines, fmt.Sprintf("<b>#%d:</b> <a href=\"%s\">%s</a>\n%s⚡ %s\n%s %s",
-				epIdx, dest, html.EscapeString(name), sizePart, strings.ToUpper(ep.Quality), destLabel, dest))
+			epMap[k] = append(epMap[k], qualityOpt{
+				quality: strings.ToUpper(q),
+				size:    ep.SizeDisplay,
+				url:     dest,
+			})
 		}
 
-		header := fmt.Sprintf("📺 <b>%s — ALL EPISODES</b>", html.EscapeString(series.Title))
+		sort.Slice(epKeys, func(i, j int) bool {
+			if epKeys[i].Season != epKeys[j].Season {
+				return epKeys[i].Season < epKeys[j].Season
+			}
+			return epKeys[i].Episode < epKeys[j].Episode
+		})
+
+		var epLines []string
+		currentSeason := -1
+		for _, k := range epKeys {
+			if k.Season != currentSeason {
+				currentSeason = k.Season
+				epLines = append(epLines, fmt.Sprintf("📺 <b>════════ SEASON %d EPISODES ════════</b>", currentSeason))
+			}
+			opts := epMap[k]
+			sort.Slice(opts, func(i, j int) bool {
+				return qualityRank(opts[i].quality) > qualityRank(opts[j].quality)
+			})
+			var qParts []string
+			for _, o := range opts {
+				sizeLabel := ""
+				if o.size != "" {
+					sizeLabel = fmt.Sprintf(" (%s)", o.size)
+				}
+				qParts = append(qParts, fmt.Sprintf("⚡ <a href=\"%s\">%s%s</a>", o.url, o.quality, sizeLabel))
+			}
+			epLines = append(epLines, fmt.Sprintf("<b>S%02dE%02d:</b> %s",
+				k.Season, k.Episode, strings.Join(qParts, " | ")))
+		}
+
+		header := fmt.Sprintf("📺 <b>%s — EPISODES (BY QUALITY)</b>", html.EscapeString(series.Title))
 		_ = b.sendChunkedMessages(c.Recipient(), header, epLines)
 	}
 
 	return nil
+}
+
+func qualityRank(q string) int {
+	upper := strings.ToUpper(q)
+	if strings.Contains(upper, "2160") || strings.Contains(upper, "4K") {
+		return 400
+	}
+	if strings.Contains(upper, "1080") {
+		return 300
+	}
+	if strings.Contains(upper, "720") {
+		return 200
+	}
+	if strings.Contains(upper, "480") {
+		return 100
+	}
+	return 50
 }
 
 func (b *Bot) sendChunkedMessages(recipient tele.Recipient, header string, lines []string) error {
