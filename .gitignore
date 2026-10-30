@@ -14,5 +14,5 @@ dist/
 *.log
 *.exe
 .DS_Store
-data/
+data/in_memory_scrape_jobs.json
 scratch/

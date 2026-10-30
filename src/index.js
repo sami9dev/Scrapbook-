@@ -79,10 +79,68 @@ export async function startServer() {
       }
     }
 
+    // 5. Initialize High-Speed Go Telegram Bot daemon
+    let goBotProcess = null;
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+      try {
+        const { spawn } = await import('node:child_process');
+        const fsModule = await import('node:fs');
+
+        const candidatePaths = [
+          path.resolve(__dirname, '..', 'go-telegram-bot', process.platform === 'win32' ? 'bot.exe' : 'bot-linux'),
+          path.resolve(__dirname, '..', 'go-telegram-bot', 'bot'),
+          path.resolve(__dirname, '..', 'go-telegram-bot', 'bot-linux'),
+          path.resolve(__dirname, '..', 'go-telegram-bot', 'bot.exe'),
+          '/app/go-telegram-bot/bot',
+        ];
+
+        let botBin = null;
+        for (const cp of candidatePaths) {
+          if (fsModule.existsSync(cp)) {
+            botBin = cp;
+            break;
+          }
+        }
+
+        if (botBin) {
+          if (process.platform !== 'win32') {
+            try { fsModule.chmodSync(botBin, 0o755); } catch (_) {}
+          }
+          const botDir = path.dirname(botBin);
+          const env = {
+            ...process.env,
+            LOCAL_RESOLVER_API: `http://127.0.0.1:${config.port}/api/resolve-link`,
+            RESOLVER_LOCAL_API: `http://127.0.0.1:${config.port}/api/resolve-link`,
+            WORKER_CONCURRENCY: process.env.WORKER_CONCURRENCY || '2',
+            PORT: String(config.port),
+          };
+          logger.database(`Spawning Go Telegram Bot from: ${botBin}`);
+          goBotProcess = spawn(botBin, [], {
+            cwd: botDir,
+            env,
+            stdio: 'inherit',
+          });
+          goBotProcess.on('error', (err) => {
+            logger.error(`Go Telegram Bot process error: ${err.message}`);
+          });
+          goBotProcess.on('exit', (code, signal) => {
+            logger.warning(`Go Telegram Bot exited with code ${code} signal ${signal}`);
+          });
+        } else {
+          logger.warning('No Go bot binary found (bot-linux/bot.exe).');
+        }
+      } catch (goErr) {
+        logger.error(`Error spawning Go Telegram Bot: ${goErr.message}`);
+      }
+    }
+
     // Handle graceful shutdown
     const shutdown = async () => {
       logger.warning('Shutting down scraper server...');
       if (telegramBot) telegramBot.stopPolling();
+      if (goBotProcess) {
+        try { goBotProcess.kill('SIGTERM'); } catch (_) {}
+      }
       server.close();
       await dbManager.disconnect();
       process.exit(0);
