@@ -23,6 +23,7 @@ done
 # 2. Start Go Telegram Bot in background
 cd /app/go-telegram-bot
 export RESOLVER_LOCAL_API="http://127.0.0.1:${APP_PORT}/api/resolve-link"
+export LOCAL_RESOLVER_API="http://127.0.0.1:${APP_PORT}/api/resolve-link"
 export SCRAPER_DIR="/app"
 export WORKER_CONCURRENCY="${WORKER_CONCURRENCY:-5}"
 

@@ -25,7 +25,15 @@ func Load() *Config {
 	cacheMinutes := getEnvInt("CACHE_TTL_MINUTES", 1440)
 	resolverAPI := os.Getenv("LOCAL_RESOLVER_API")
 	if resolverAPI == "" {
-		resolverAPI = "http://localhost:3000/api/resolve-link"
+		resolverAPI = os.Getenv("RESOLVER_LOCAL_API")
+	}
+	if resolverAPI == "" {
+		port := os.Getenv("PORT")
+		if port != "" {
+			resolverAPI = "http://127.0.0.1:" + port + "/api/resolve-link"
+		} else {
+			resolverAPI = "http://localhost:3000/api/resolve-link"
+		}
 	}
 	rustWorkerURL := os.Getenv("RUST_WORKER_URL")
 	if rustWorkerURL == "" {
