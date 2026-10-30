@@ -18,3 +18,7 @@ services:
         value: "2"
       - key: RESOLVER_LOCAL_API
         value: "http://127.0.0.1:10000/api/resolve-link"
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false

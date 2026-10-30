@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"log"
 	"regexp"
 	"runtime"
 	"sort"
@@ -62,6 +63,7 @@ func (b *Bot) registerHandlers() {
 	b.teleBot.Handle("/start", b.handleStart)
 	b.teleBot.Handle("/help", b.handleHelp)
 	b.teleBot.Handle("/stats", b.handleStats)
+	b.teleBot.Handle("/cache", b.handleCache)
 	b.teleBot.Handle(tele.OnText, b.handleText)
 }
 
@@ -91,6 +93,29 @@ Paste any movie or series URL to get all releases and direct download links. If 
 <b>2. Download Links:</b>
 Paste single or multiple download links (separated by newlines). The bot will dispatch them across parallel Go worker routines and resolve each one to its HubCloud destination!`
 	return c.Send(msg, tele.ModeHTML)
+}
+
+func (b *Bot) handleCache(c tele.Context) error {
+	args := c.Args()
+	if len(args) < 2 {
+		return c.Send("ℹ️ <b>Manual Cache Ingestion:</b>\n\nWhen a link presents a Cloudflare/Turnstile challenge, open it in your browser to get the final HubCloud URL, then send:\n<code>/cache &lt;mediator_url&gt; &lt;hubcloud_url&gt;</code>\n\nExample:\n<code>/cache https://link.xdmovies.wtf/download/xyz https://hubcloud.ist/drive/abc</code>", tele.ModeHTML)
+	}
+
+	mediatorURL := strings.TrimSpace(args[0])
+	destinationURL := strings.TrimSpace(args[1])
+
+	if !strings.HasPrefix(mediatorURL, "http") || !strings.HasPrefix(destinationURL, "http") {
+		return c.Send("❌ Please provide valid HTTP/HTTPS URLs.", tele.ModeHTML)
+	}
+
+	ok := b.resolver.SaveUpstashLinkCache(mediatorURL, destinationURL)
+	b.cache.Set(mediatorURL, destinationURL, "Manual Cached")
+
+	if ok {
+		return c.Send(fmt.Sprintf("🎯 <b>Link Successfully Cached in Cloud!</b>\n\n<b>Source:</b> <code>%s</code>\n<b>HubCloud Destination:</b> <a href=\"%s\">%s</a>\n\n⚡ <i>This link is now persisted in Upstash Redis and Supabase. Future batch queries will resolve it instantly without challenges!</i>", html.EscapeString(mediatorURL), html.EscapeString(destinationURL), html.EscapeString(destinationURL)), tele.ModeHTML)
+	} else {
+		return c.Send("⚠️ Cached locally in memory, but cloud worker was unreachable.", tele.ModeHTML)
+	}
 }
 
 func (b *Bot) handleStats(c tele.Context) error {
@@ -155,9 +180,13 @@ func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
 	duration := time.Since(start)
 
 	if err != nil {
-		errMsg := fmt.Sprintf("❌ <b>Could not find or scrape this URL:</b>\n%s\n\n<i>Tip:</i> Check that the URL is correct.", err.Error())
+		log.Printf("[Bot] GetSeriesReleases error: %v", err)
+		errMsg := fmt.Sprintf("❌ <b>Could not find or scrape this URL:</b>\n%s\n\n<i>Tip:</i> Check that the URL is correct.", html.EscapeString(err.Error()))
 		if statusMsg != nil {
-			_, _ = b.teleBot.Edit(statusMsg, errMsg, tele.ModeHTML)
+			if _, editErr := b.teleBot.Edit(statusMsg, errMsg, tele.ModeHTML); editErr != nil {
+				log.Printf("[Bot] Failed to edit statusMsg: %v. Sending direct message...", editErr)
+				return c.Send(errMsg, tele.ModeHTML)
+			}
 			return nil
 		}
 		return c.Send(errMsg, tele.ModeHTML)
@@ -256,7 +285,10 @@ func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
 	}
 
 	if statusMsg != nil {
-		_, _ = b.teleBot.Edit(statusMsg, sb.String(), tele.ModeHTML)
+		if _, err := b.teleBot.Edit(statusMsg, sb.String(), tele.ModeHTML); err != nil {
+			log.Printf("[Bot] Failed to edit statusMsg: %v. Sending direct message...", err)
+			_, _ = b.teleBot.Send(c.Recipient(), sb.String(), tele.ModeHTML)
+		}
 	} else {
 		_, _ = b.teleBot.Send(c.Recipient(), sb.String(), tele.ModeHTML)
 	}
@@ -333,12 +365,57 @@ func (b *Bot) sendChunkedMessages(recipient tele.Recipient, header string, lines
 
 func (b *Bot) handleDownloadLinks(c tele.Context, matches []string) error {
 	totalLinks := len(matches)
-	statusMsg, _ := b.teleBot.Send(c.Recipient(), fmt.Sprintf("⚡ <i>Resolving batch (0/%d links completed)...</i>", totalLinks), tele.ModeHTML)
+	statusMsg, _ := b.teleBot.Send(c.Recipient(), fmt.Sprintf("⚡ <i>Checking cloud queue for batch of %d links...</i>", totalLinks), tele.ModeHTML)
 
+	msgID := int64(0)
+	if statusMsg != nil {
+		msgID = int64(statusMsg.ID)
+	}
+
+	// 1. Try enqueuing to Render Rust Worker
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	enqueueResp, err := b.resolver.EnqueueBatchJob(ctx, matches, c.Chat().ID, msgID)
+	if err == nil && enqueueResp != nil {
+		// Case A: Instant cache hit for all links
+		if enqueueResp.AllCached && len(enqueueResp.Results) > 0 {
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("🎯 <b>Instant Cache Hit: %d Link(s)</b>\n\n", len(enqueueResp.Results)))
+			for i, res := range enqueueResp.Results {
+				label := "Destination:"
+				if strings.Contains(res.Destination, "hubcloud") {
+					label = "HubCloud:"
+				}
+				sb.WriteString(fmt.Sprintf("<b>#%d:</b> <a href=\"%s\">Resolved Link</a>\n%s %s\n\n", i+1, res.Destination, label, res.Destination))
+			}
+			if statusMsg != nil {
+				_, _ = b.teleBot.Edit(statusMsg, sb.String(), tele.ModeHTML)
+				return nil
+			}
+			return c.Send(sb.String(), tele.ModeHTML)
+		}
+
+		// Case B: Job successfully enqueued to cloud worker
+		if enqueueResp.Queued {
+			queuedText := fmt.Sprintf(
+				"⚡ <b>Job #%s Queued</b>\n\nResolving %d link(s) on Render Cloud Worker...\nProgress will update live as links finish.",
+				enqueueResp.JobID,
+				totalLinks,
+			)
+			if statusMsg != nil {
+				_, _ = b.teleBot.Edit(statusMsg, queuedText, tele.ModeHTML)
+			}
+			// PROMPT RETURN: The Telegram request does NOT wait! Cloud worker updates the message.
+			return nil
+		}
+	}
+
+	// Fallback if cloud worker not connected: Safe local fallback without heavy browsers
 	start := time.Now()
 	results := b.pool.ResolveBatchWithProgress(matches, func(res resolver.Result, done, total int) {
 		if statusMsg != nil {
-			statusText := fmt.Sprintf("⚡ <i>Resolving in background: <b>[%d/%d completed]</b> (%.0f%%)...</i>\nLatest: <code>%s</code>",
+			statusText := fmt.Sprintf("⚡ <i>Resolving: <b>[%d/%d completed]</b> (%.0f%%)...</i>\nLatest: <code>%s</code>",
 				done, total, float64(done)/float64(total)*100, truncateURL(res.Destination, 40))
 			_, _ = b.teleBot.Edit(statusMsg, statusText, tele.ModeHTML)
 		}
@@ -376,7 +453,6 @@ func (b *Bot) handleDownloadLinks(c tele.Context, matches []string) error {
 		fullSB.WriteString("\n")
 	}
 
-	// If the entire output fits comfortably within Telegram's 4096 limit (< 3500 chars)
 	if fullSB.Len() < 3500 && statusMsg != nil {
 		_, err := b.teleBot.Edit(statusMsg, fullSB.String(), tele.ModeHTML)
 		if err == nil {
@@ -384,7 +460,6 @@ func (b *Bot) handleDownloadLinks(c tele.Context, matches []string) error {
 		}
 	}
 
-	// For large batches (e.g. 27, 37 links), finalize the status message and send chunked messages
 	if statusMsg != nil {
 		statusDone := fmt.Sprintf("%s\n<i>Batch complete! Delivering all %d links below:</i>", header, totalLinks)
 		_, _ = b.teleBot.Edit(statusMsg, statusDone, tele.ModeHTML)

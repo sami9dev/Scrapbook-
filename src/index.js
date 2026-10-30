@@ -59,7 +59,7 @@ export async function startServer() {
 
     // 4. Initialize Telegram Bot if token provided
     let telegramBot = null;
-    if (process.env.TELEGRAM_BOT_TOKEN) {
+    if (process.env.ENABLE_NODE_TELEGRAM_BOT === 'true' && process.env.TELEGRAM_BOT_TOKEN) {
       try {
         const { Telegram4KHub4UBot } = await import('./bot/telegram/index.js');
         telegramBot = new Telegram4KHub4UBot();

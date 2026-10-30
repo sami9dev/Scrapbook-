@@ -28,9 +28,9 @@ func main() {
 	memCache := cache.New(cfg.CacheTTL)
 	log.Printf("[Init] Memory Cache configured with TTL: %v\n", cfg.CacheTTL)
 
-	// 2. Initialize Link Resolver
-	resEngine := resolver.New(memCache, cfg.LocalResolverAPI, cfg.RequestTimeout)
-	log.Printf("[Init] Resolver Engine connected to: %s\n", cfg.LocalResolverAPI)
+	// 2. Initialize Link Resolver (with Rust Worker connection)
+	resEngine := resolver.New(memCache, cfg.LocalResolverAPI, cfg.RustWorkerURL, cfg.TelegramBotToken, cfg.RequestTimeout)
+	log.Printf("[Init] Resolver Engine connected to: %s (Timeout: %v, Rust Worker: %s)\n", cfg.LocalResolverAPI, cfg.RequestTimeout, cfg.RustWorkerURL)
 
 	// 3. Initialize Concurrency Worker Pool
 	queueCapacity := cfg.WorkerCount * 50

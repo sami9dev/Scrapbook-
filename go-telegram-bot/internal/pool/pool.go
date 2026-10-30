@@ -74,27 +74,43 @@ func (p *WorkerPool) ResolveBatch(urls []string) []resolver.Result {
 	return p.ResolveBatchWithProgress(urls, nil)
 }
 
-// ResolveBatchWithProgress processes multiple URLs concurrently and reports progress
+type indexedResult struct {
+	index int
+	res   resolver.Result
+}
+
+// ResolveBatchWithProgress processes multiple URLs concurrently and reports progress in real-time
 func (p *WorkerPool) ResolveBatchWithProgress(urls []string, onProgress func(res resolver.Result, done, total int)) []resolver.Result {
 	count := len(urls)
 	if count == 0 {
 		return nil
 	}
 
-	resultChans := make([]<-chan resolver.Result, count)
-	for i, u := range urls {
-		if i > 0 {
-			time.Sleep(3 * time.Second)
-		}
-		resultChans[i] = p.Submit(u)
-	}
-
 	results := make([]resolver.Result, count)
-	for i, ch := range resultChans {
-		res := <-ch
-		results[i] = res
+	outChan := make(chan indexedResult, count)
+
+	// Submit all URLs smoothly to worker queue (spaced by 250ms so workers pick them up right away)
+	go func() {
+		for i, u := range urls {
+			if i > 0 {
+				time.Sleep(250 * time.Millisecond)
+			}
+			idx := i
+			ch := p.Submit(u)
+			go func(itemIdx int, itemChan <-chan resolver.Result) {
+				r := <-itemChan
+				outChan <- indexedResult{index: itemIdx, res: r}
+			}(idx, ch)
+		}
+	}()
+
+	completed := 0
+	for completed < count {
+		item := <-outChan
+		results[item.index] = item.res
+		completed++
 		if onProgress != nil {
-			onProgress(res, i+1, count)
+			onProgress(item.res, completed, count)
 		}
 	}
 

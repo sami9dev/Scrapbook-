@@ -12,6 +12,7 @@ yarn-error.log*
 coverage/
 dist/
 *.log
+*.exe
 .DS_Store
 data/
 scratch/

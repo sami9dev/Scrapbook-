@@ -11,8 +11,8 @@ import (
 
 func main() {
 	c := cache.New(time.Hour)
-	r := resolver.New(c, "http://localhost:3000/api/resolve-link", 10*time.Second)
-	sr, err := r.GetSeriesReleases(context.Background(), "https://huh.xdmovies.wtf/series/asur-2160p-1080p-hindi-tamil-download-100911")
+	r := resolver.New(c, "http://localhost:3000/api/resolve-link", "http://localhost:10000", "", 10*time.Second)
+	sr, err := r.GetSeriesReleases(context.Background(), "https://huh.xdmovies.wtf/movies/mirzapur-the-movie-2160p-1080p-hindi-download-1378537")
 	if err != nil {
 		fmt.Println("Error:", err)
 	} else {
