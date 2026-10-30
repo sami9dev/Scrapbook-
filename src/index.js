@@ -55,6 +55,21 @@ export async function startServer() {
     const server = app.listen(config.port, () => {
       logger.database(`Server listening on http://localhost:${config.port}`);
       logger.database(`Admin dashboard available at http://localhost:${config.port}/`);
+
+      // Keep-alive pinger for Render free tier (prevents 15m idle shutdown)
+      const externalUrl = process.env.RENDER_EXTERNAL_URL || 'https://scrapbook-0mrx.onrender.com';
+      if (externalUrl) {
+        const KEEP_ALIVE_INTERVAL = 10 * 60 * 1000; // 10 minutes
+        setInterval(async () => {
+          try {
+            const res = await fetch(`${externalUrl}/health`);
+            logger.database(`[Keep-Alive] Ping to ${externalUrl}/health -> ${res.status}`);
+          } catch (e) {
+            logger.warning(`[Keep-Alive] Ping failed: ${e.message}`);
+          }
+        }, KEEP_ALIVE_INTERVAL);
+        logger.database(`[Keep-Alive] Scheduled every 10 minutes for ${externalUrl}`);
+      }
     });
 
     // 4. Initialize Telegram Bot if token provided

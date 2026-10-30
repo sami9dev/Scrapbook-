@@ -6,6 +6,8 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
+    "build": "npx patchright install chromium || npx playwright install chromium || true",
+    "postinstall": "npx patchright install chromium || true",
     "format": "node src/cli.js",
     "collect-links": "node src/tools/link-collector/cli.js",
     "test": "vitest run",
