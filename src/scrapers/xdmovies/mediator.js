@@ -330,30 +330,41 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
     }
 
     // Step 2: Click #generateBtn
-    logger.log('XDMovies', '[XDMovies Mediator] Step 1: Clicking #generateBtn...');
-    await page.waitForSelector('#generateBtn:not(.hidden)', { timeout: 20000 });
-    await sleep(1000);
-    await page.evaluate(() => {
-      const btn = document.getElementById('generateBtn');
-      if (btn) btn.click();
-    });
+    logger.log('XDMovies', '[XDMovies Mediator] Step 1: Checking and clicking #generateBtn...');
+    try {
+      const genBtn = await page.waitForSelector('#generateBtn', { timeout: 15000 });
+      if (genBtn) {
+        await sleep(1000);
+        await page.evaluate(() => {
+          const btn = document.getElementById('generateBtn');
+          if (btn) btn.click();
+        });
+      }
+    } catch {
+      logger.log('XDMovies', '[XDMovies Mediator] #generateBtn step skipped or not needed.');
+    }
 
     // Step 3: Wait for Step 1 countdown (6s)
     logger.log('XDMovies', '[XDMovies Mediator] Waiting for Step 1 countdown...');
-    let continueVisible = await page.waitForSelector('#continueBtn:not(.hidden)', { timeout: 12000 }).catch(() => null);
-    if (!continueVisible) {
-      // Re-trigger click on generateBtn if countdown didn't start or was delayed
-      await page.evaluate(() => {
-        const btn = document.getElementById('generateBtn');
-        if (btn) btn.click();
-      }).catch(() => {});
-      await page.waitForSelector('#continueBtn:not(.hidden)', { timeout: 28000 });
+    try {
+      let continueVisible = await page.waitForSelector('#continueBtn:not(.hidden), #continueBtn', { timeout: 20000 }).catch(() => null);
+      if (!continueVisible) {
+        await page.evaluate(() => {
+          const btn = document.getElementById('generateBtn');
+          if (btn) btn.click();
+        }).catch(() => {});
+        continueVisible = await page.waitForSelector('#continueBtn:not(.hidden), #continueBtn', { timeout: 25000 }).catch(() => null);
+      }
+      if (continueVisible) {
+        logger.log('XDMovies', '[XDMovies Mediator] Step 1 finished! Clicking #continueBtn...');
+        await page.evaluate(() => {
+          const btn = document.getElementById('continueBtn');
+          if (btn) btn.click();
+        });
+      }
+    } catch {
+      logger.log('XDMovies', '[XDMovies Mediator] #continueBtn step passed.');
     }
-    logger.log('XDMovies', '[XDMovies Mediator] Step 1 finished! Clicking #continueBtn...');
-    await page.evaluate(() => {
-      const btn = document.getElementById('continueBtn');
-      if (btn) btn.click();
-    });
 
     // Step 4: Step 2 page reload (?step=2)
     logger.log('XDMovies', '[XDMovies Mediator] Step 2: Waiting for Step 2 page reload...');
