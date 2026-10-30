@@ -181,7 +181,8 @@ func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
 
 	if err != nil {
 		log.Printf("[Bot] GetSeriesReleases error: %v", err)
-		errMsg := fmt.Sprintf("❌ <b>Could not find or scrape this URL:</b>\n%s\n\n<i>Tip:</i> Check that the URL is correct.", html.EscapeString(err.Error()))
+		errMsg := fmt.Sprintf("ℹ️ <b>Title Not Yet In Pre-Indexed Catalogue</b>\n\nThe landing page (<code>%s</code>) is protected by Cloudflare Turnstile, so automated scraping is paused.\n\n👉 <b>How to get your direct HubCloud links:</b>\n1. Open the page in your browser: <a href=\"%s\">%s</a>\n2. Copy the download link(s) on that page (e.g. <code>https://link.xdmovies.wtf/download/...</code>)\n3. Paste the download link(s) here — the bot will resolve each one to a direct <b>HubCloud</b> link!",
+			html.EscapeString(contentURL), html.EscapeString(contentURL), html.EscapeString(contentURL))
 		if statusMsg != nil {
 			if _, editErr := b.teleBot.Edit(statusMsg, errMsg, tele.ModeHTML); editErr != nil {
 				log.Printf("[Bot] Failed to edit statusMsg: %v. Sending direct message...", editErr)
