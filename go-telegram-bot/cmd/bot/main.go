@@ -1,10 +1,16 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"go-telegram-bot/internal/bot"
 	"go-telegram-bot/internal/cache"
@@ -24,9 +30,31 @@ func main() {
 		log.Fatal("ERROR: TELEGRAM_BOT_TOKEN is not configured! Please set it in your .env file or environment.")
 	}
 
-	// 1. Initialize Thread-Safe In-Memory Cache
-	memCache := cache.New(cfg.CacheTTL)
-	log.Printf("[Init] Memory Cache configured with TTL: %v\n", cfg.CacheTTL)
+	// 1. Initialize Multi-Tier Cache (L1 sync.Map -> L2 Redis -> L3 MongoDB)
+	var rdb *redis.Client
+	if cfg.RedisURL != "" {
+		if opt, err := redis.ParseURL(cfg.RedisURL); err == nil {
+			rdb = redis.NewClient(opt)
+			log.Println("[Init] L2 Redis client initialized")
+		} else {
+			log.Printf("[Init] Redis URL parse note: %v\n", err)
+		}
+	}
+
+	var mongoCol *mongo.Collection
+	if cfg.MongoURI != "" {
+		mCtx, mCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer mCancel()
+		if client, err := mongo.Connect(mCtx, options.Client().ApplyURI(cfg.MongoURI)); err == nil {
+			mongoCol = client.Database("scraper_db").Collection("scrapedlinks")
+			log.Println("[Init] L3 MongoDB Atlas client initialized")
+		} else {
+			log.Printf("[Init] MongoDB connection note: %v\n", err)
+		}
+	}
+
+	memCache := cache.NewMultiTierCache(rdb, mongoCol)
+	log.Printf("[Init] 3-Tier Cache initialized (L1 sync.Map: active, L2 Redis: %v, L3 Mongo: %v)\n", rdb != nil, mongoCol != nil)
 
 	// 2. Initialize Link Resolver (with Rust Worker connection)
 	resEngine := resolver.New(memCache, cfg.LocalResolverAPI, cfg.RustWorkerURL, cfg.TelegramBotToken, cfg.RequestTimeout)

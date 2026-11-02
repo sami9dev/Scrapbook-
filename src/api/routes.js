@@ -1222,6 +1222,7 @@ router.post('/resolve-link', async (req, res) => {
         state: medRes.success ? 'HUBCLOUD_DETECTED' : 'ERROR',
         error: medRes.error,
         meta: medRes.metadata,
+        isDead: medRes.isDead || false,
       };
     } else {
       const { resolveMediatorHttpFirst } = await import('../resolvers/mediator/http-first.js');
@@ -1282,6 +1283,7 @@ router.post('/resolve-link', async (req, res) => {
       }
       return res.status(400).json({
         success: false,
+        isDead: resolution.isDead || false,
         state: resolution.state,
         error: resolution.error || 'Failed to resolve mediator link',
       });

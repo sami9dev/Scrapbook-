@@ -112,6 +112,17 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
         );
       });
 
+      if (scrapResult && scrapResult.isDead) {
+        logger.log('XDMovies', `[XDMovies Mediator] Dead link detected early (${scrapResult.error}). Fast aborting without browser fallback.`);
+        return {
+          success: false,
+          isDead: true,
+          destination: null,
+          error: scrapResult.error || 'Link is dead or token not found (404)',
+          elapsedMs: Date.now() - startedAt,
+        };
+      }
+
       if (scrapResult && scrapResult.success && scrapResult.destination) {
         const dest = canonicalHubCloudUrl(scrapResult.destination);
         let metadata = null;

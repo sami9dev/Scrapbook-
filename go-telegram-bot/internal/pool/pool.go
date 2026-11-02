@@ -36,6 +36,13 @@ func New(workerCount int, queueBuffer int, r *resolver.Resolver) *WorkerPool {
 	return p
 }
 
+func (p *WorkerPool) WorkerCount() int {
+	if p.workerCount <= 0 {
+		return 4
+	}
+	return p.workerCount
+}
+
 func (p *WorkerPool) startWorkers() {
 	for i := 0; i < p.workerCount; i++ {
 		p.wg.Add(1)

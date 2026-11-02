@@ -15,6 +15,8 @@ type Config struct {
 	LocalResolverAPI string
 	RustWorkerURL    string
 	RequestTimeout   time.Duration
+	RedisURL         string
+	MongoURI         string
 }
 
 func Load() *Config {
@@ -41,6 +43,12 @@ func Load() *Config {
 	}
 	timeoutSec := getEnvInt("REQUEST_TIMEOUT_SECONDS", 150)
 
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		redisURL = os.Getenv("UPSTASH_REDIS_URL")
+	}
+	mongoURI := os.Getenv("MONGODB_URI")
+
 	return &Config{
 		TelegramBotToken: token,
 		WorkerCount:      workers,
@@ -48,6 +56,8 @@ func Load() *Config {
 		LocalResolverAPI: resolverAPI,
 		RustWorkerURL:    rustWorkerURL,
 		RequestTimeout:   time.Duration(timeoutSec) * time.Second,
+		RedisURL:         redisURL,
+		MongoURI:         mongoURI,
 	}
 }
 

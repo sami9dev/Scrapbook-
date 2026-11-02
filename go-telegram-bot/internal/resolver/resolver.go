@@ -26,6 +26,7 @@ type Result struct {
 	FromCache   bool
 	Duration    time.Duration
 	Err         error
+	IsDead      bool
 }
 
 type StoredLink struct {
@@ -285,49 +286,61 @@ func isIntermediateMediator(urlStr string) bool {
 	return strings.Contains(lower, "latestnewsonline.sbs") || strings.Contains(lower, "link.xdmovies.")
 }
 
-// Resolve processes an individual URL, checking cache first, then resolving
+// Resolve processes an individual URL, checking 3-tier cache first, then resolving
 func (r *Resolver) Resolve(ctx context.Context, rawURL string) Result {
 	rawURL = strings.TrimSpace(rawURL)
 	start := time.Now()
 
-	// 1. Check In-Memory Cache (Sub-millisecond lookup)
-	if cached, hit := r.cache.Get(rawURL); hit {
+	// 1. Check 3-Tier Cache (L1 sync.Map -> L2 Redis -> L3 MongoDB)
+	if cachedDest, hit, err := r.cache.Get(ctx, rawURL); hit {
+		if errors.Is(err, cache.ErrDeadLink) {
+			return Result{
+				SourceURL: rawURL,
+				Duration:  time.Since(start),
+				Err:       cache.ErrDeadLink,
+				IsDead:    true,
+				FromCache: true,
+			}
+		}
+		t := r.lookupStoredTitle(ctx, rawURL, cachedDest)
 		return Result{
 			SourceURL:   rawURL,
-			Destination: cached.Destination,
-			Title:       cached.Title,
+			Destination: cachedDest,
+			Title:       t,
 			FromCache:   true,
 			Duration:    time.Since(start),
 			Err:         nil,
 		}
 	}
 
-	// 1b. PRIORITY 1: Check Upstash Redis Cache BEFORE scraping / resolving
-	if r.rustWorkerURL != "" {
-		if upstashDest, hit := r.checkUpstashLinkCache(ctx, rawURL); hit && upstashDest != "" {
-			t := r.lookupStoredTitle(ctx, rawURL, upstashDest)
-			r.cache.Set(rawURL, upstashDest, t)
-			return Result{
-				SourceURL:   rawURL,
-				Destination: upstashDest,
-				Title:       t,
-				FromCache:   true,
-				Duration:    time.Since(start),
-				Err:         nil,
-			}
+	// 2. Resolve via Local Scraper Daemon (with browser & fail-fast dead check)
+	dest, title, err := r.resolveViaBackend(ctx, rawURL)
+	if errors.Is(err, cache.ErrDeadLink) {
+		r.cache.SetDead(rawURL)
+		return Result{
+			SourceURL: rawURL,
+			Duration:  time.Since(start),
+			Err:       cache.ErrDeadLink,
+			IsDead:    true,
 		}
 	}
 
-	// 2. Resolve via Local Scraper Daemon (with browser & Turnstile engine)
-	dest, title, err := r.resolveViaBackend(ctx, rawURL)
 	if err != nil {
-		// Auto-retry once after a short 2-second pause if first attempt failed/timed out
+		// Auto-retry once after a short 2-second pause only if NOT a dead link
 		log.Printf("[Resolver] First attempt failed for %s (%v). Auto-retrying once...", rawURL, err)
 		time.Sleep(2 * time.Second)
 		dest, title, err = r.resolveViaBackend(ctx, rawURL)
+		if errors.Is(err, cache.ErrDeadLink) {
+			r.cache.SetDead(rawURL)
+			return Result{
+				SourceURL: rawURL,
+				Duration:  time.Since(start),
+				Err:       cache.ErrDeadLink,
+				IsDead:    true,
+			}
+		}
 	}
 	if err != nil {
-		// Fallback: Attempt direct HTTP redirect inspection
 		dest, err = r.resolveDirectRedirects(ctx, rawURL)
 	}
 
@@ -338,12 +351,8 @@ func (r *Resolver) Resolve(ctx context.Context, rawURL string) Result {
 	duration := time.Since(start)
 
 	if err == nil && dest != "" && !isIntermediateMediator(dest) {
-		// Save to in-memory cache for instant future lookups
-		r.cache.Set(rawURL, dest, title)
-		// PRIORITY 1: Persist in Upstash Redis cache for global instant retrieval
-		if r.rustWorkerURL != "" {
-			go r.SaveUpstashLinkCache(rawURL, dest)
-		}
+		// Save across all 3 tiers (sync.Map, Redis, MongoDB)
+		r.cache.SetValid(ctx, rawURL, dest)
 		return Result{
 			SourceURL:   rawURL,
 			Destination: dest,
@@ -375,6 +384,7 @@ type resolveResponse struct {
 	DriveID     string `json:"driveId"`
 	Title       string `json:"title"`
 	Error       string `json:"error"`
+	IsDead      bool   `json:"isDead"`
 }
 
 func (r *Resolver) resolveViaBackend(ctx context.Context, targetURL string) (string, string, error) {
@@ -395,6 +405,10 @@ func (r *Resolver) resolveViaBackend(ctx context.Context, targetURL string) (str
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", "", fmt.Errorf("failed to decode response: %w", err)
 	}
+	if result.IsDead || strings.Contains(result.Error, "404") || strings.Contains(result.Error, "not found in JSONs") {
+		return "", "", cache.ErrDeadLink
+	}
+
 
 	if !result.Success || result.Destination == "" {
 		errMsg := result.Error

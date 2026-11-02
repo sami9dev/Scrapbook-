@@ -1,6 +1,9 @@
 package bot
 
 import (
+	"errors"
+	"sync"
+	"sync/atomic"
 	"context"
 	"fmt"
 	"html"
@@ -449,15 +452,15 @@ func (b *Bot) sendChunkedMessages(recipient tele.Recipient, header string, lines
 
 func (b *Bot) handleDownloadLinks(c tele.Context, matches []string) error {
 	totalLinks := len(matches)
-	statusMsg, _ := b.teleBot.Send(c.Recipient(), fmt.Sprintf("⚡ <i>Checking cloud queue for batch of %d links...</i>", totalLinks), tele.ModeHTML)
+	statusMsg, _ := b.teleBot.Send(c.Recipient(), fmt.Sprintf("⚡ <i>Checking 3-tier cache for %d links...</i>", totalLinks), tele.ModeHTML)
 
 	msgID := int64(0)
 	if statusMsg != nil {
 		msgID = int64(statusMsg.ID)
 	}
 
-	// 1. Try enqueuing to Render Rust Worker
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// 1. Try enqueuing to Render Rust Worker if available
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	enqueueResp, err := b.resolver.EnqueueBatchJob(ctx, matches, c.Chat().ID, msgID)
@@ -467,11 +470,10 @@ func (b *Bot) handleDownloadLinks(c tele.Context, matches []string) error {
 			var sb strings.Builder
 			sb.WriteString(fmt.Sprintf("🎯 <b>Instant Cache Hit: %d Link(s)</b>\n\n", len(enqueueResp.Results)))
 			for i, res := range enqueueResp.Results {
-				label := "Destination:"
-				if strings.Contains(res.Destination, "hubcloud") {
-					label = "HubCloud:"
+				dest := res.Destination
+				if strings.Contains(dest, "hubcloud") {
+					sb.WriteString(fmt.Sprintf("<b>#%d:</b> ⚡ <a href=\"%s\"><b>Direct HubCloud Link</b></a>\n<code>%s</code>\n\n", i+1, dest, dest))
 				}
-				sb.WriteString(fmt.Sprintf("<b>#%d:</b> <a href=\"%s\">Resolved Link</a>\n%s %s\n\n", i+1, res.Destination, label, res.Destination))
 			}
 			if statusMsg != nil {
 				_, _ = b.teleBot.Edit(statusMsg, sb.String(), tele.ModeHTML)
@@ -483,73 +485,183 @@ func (b *Bot) handleDownloadLinks(c tele.Context, matches []string) error {
 		// Case B: Job successfully enqueued to cloud worker
 		if enqueueResp.Queued {
 			queuedText := fmt.Sprintf(
-				"⚡ <b>Job #%s Queued</b>\n\nResolving %d link(s) on Render Cloud Worker...\nProgress will update live as links finish.",
+				"⚡ <b>Job #%s Queued</b>\n\nResolving %d link(s) on Cloud Worker...\nProgress will update live as links finish.",
 				enqueueResp.JobID,
 				totalLinks,
 			)
 			if statusMsg != nil {
 				_, _ = b.teleBot.Edit(statusMsg, queuedText, tele.ModeHTML)
 			}
-			// PROMPT RETURN: The Telegram request does NOT wait! Cloud worker updates the message.
 			return nil
 		}
 	}
 
-	// Fallback if cloud worker not connected: Safe local fallback without heavy browsers
-	start := time.Now()
-	results := b.pool.ResolveBatchWithProgress(matches, func(res resolver.Result, done, total int) {
-		if statusMsg != nil {
-			statusText := fmt.Sprintf("⚡ <i>Resolving: <b>[%d/%d completed]</b> (%.0f%%)...</i>\nLatest: <code>%s</code>",
-				done, total, float64(done)/float64(total)*100, truncateURL(res.Destination, 40))
-			_, _ = b.teleBot.Edit(statusMsg, statusText, tele.ModeHTML)
+	// 2. Asynchronous Resolution with Live Telegram Progress Updates:
+	// Runs in a background goroutine so Render's 60s request timeout is NEVER hit
+	// and Telegram gets live progress updates throttled every 2.5-3.0 seconds!
+	go b.processBatchAsync(c, statusMsg, matches)
+
+	return nil
+}
+
+func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []string) {
+	total := len(urls)
+	results := make([]resolver.Result, total)
+	var completedCount int32
+	var cacheHits int32
+	var wg sync.WaitGroup
+
+	workerSlots := b.pool.WorkerCount()
+	if workerSlots <= 0 {
+		workerSlots = 4
+	}
+	semaphore := make(chan struct{}, workerSlots)
+
+	// Throttled Telegram Progress Updater (every 2.5 - 3 seconds to respect rate limits)
+	doneChan := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(2500 * time.Millisecond)
+		defer ticker.Stop()
+		var lastReported int32 = -1
+
+		for {
+			select {
+			case <-doneChan:
+				return
+			case <-ticker.C:
+				current := atomic.LoadInt32(&completedCount)
+				hits := atomic.LoadInt32(&cacheHits)
+				if current > 0 && current != lastReported && current < int32(total) {
+					lastReported = current
+					progressText := fmt.Sprintf(
+						"⏳ <b>Resolving Links...</b>\n\nProgress: <b>[%d/%d completed]</b> (%.0f%%)\n⚡ Instant Cache Hits: <b>%d</b>\n⚙️ Active Workers: <b>%d parallel max</b>",
+						current, total, float64(current)/float64(total)*100, hits, workerSlots,
+					)
+					if statusMsg != nil {
+						_, _ = b.teleBot.Edit(statusMsg, progressText, tele.ModeHTML)
+					}
+				}
+			}
 		}
-	})
+	}()
+
+	start := time.Now()
+
+	for i, targetURL := range urls {
+		wg.Add(1)
+		go func(idx int, rawURL string) {
+			defer wg.Done()
+			defer atomic.AddInt32(&completedCount, 1)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			defer cancel()
+
+			itemStart := time.Now()
+
+			// 1. Check 3-Tier Cache (L1 sync.Map -> L2 Redis -> L3 MongoDB) BEFORE semaphore
+			if cachedDest, hit, err := b.cache.Get(ctx, rawURL); hit {
+				atomic.AddInt32(&cacheHits, 1)
+				if errors.Is(err, cache.ErrDeadLink) {
+					results[idx] = resolver.Result{
+						SourceURL: rawURL,
+						Duration:  time.Since(itemStart),
+						Err:       cache.ErrDeadLink,
+						IsDead:    true,
+						FromCache: true,
+					}
+					return
+				}
+				results[idx] = resolver.Result{
+					SourceURL:   rawURL,
+					Destination: cachedDest,
+					FromCache:   true,
+					Duration:    time.Since(itemStart),
+					Err:         nil,
+				}
+				return
+			}
+
+			// 2. Acquire bounded worker slot
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			// 3. Re-check cache in case duplicate finished while waiting
+			if cachedDest, hit, err := b.cache.Get(ctx, rawURL); hit {
+				atomic.AddInt32(&cacheHits, 1)
+				if errors.Is(err, cache.ErrDeadLink) {
+					results[idx] = resolver.Result{
+						SourceURL: rawURL,
+						Duration:  time.Since(itemStart),
+						Err:       cache.ErrDeadLink,
+						IsDead:    true,
+						FromCache: true,
+					}
+					return
+				}
+				results[idx] = resolver.Result{
+					SourceURL:   rawURL,
+					Destination: cachedDest,
+					FromCache:   true,
+					Duration:    time.Since(itemStart),
+					Err:         nil,
+				}
+				return
+			}
+
+			// 4. Resolve via Engine (with fail-fast dead check)
+			res := b.resolver.Resolve(ctx, rawURL)
+			results[idx] = res
+		}(i, targetURL)
+	}
+
+	wg.Wait()
+	close(doneChan)
 	totalDuration := time.Since(start)
 
-	header := fmt.Sprintf("🎯 <b>Resolved %d Link(s) in %s</b>\n", totalLinks, formatDuration(totalDuration))
+	// Format final response
+	header := fmt.Sprintf("🎯 <b>Batch Finished: %d Link(s) in %s</b>\n⚡ <i>%d retrieved instantly from cache</i>\n\n", total, formatDuration(totalDuration), atomic.LoadInt32(&cacheHits))
 
 	var resultLines []string
 	var fullSB strings.Builder
 	fullSB.WriteString(header)
-	fullSB.WriteString("\n")
 
 	for i, res := range results {
 		var itemSB strings.Builder
-		titleText := res.Title
-		if titleText == "" {
-			titleText = truncateURL(res.SourceURL, 45)
-		}
-		itemSB.WriteString(fmt.Sprintf("<b>#%d:</b> <a href=\"%s\">%s</a>\n", i+1, res.Destination, html.EscapeString(titleText)))
-
-		if res.Err != nil {
-			itemSB.WriteString(fmt.Sprintf("Error: %s\n", res.Err.Error()))
+		if errors.Is(res.Err, cache.ErrDeadLink) || res.IsDead {
+			itemSB.WriteString(fmt.Sprintf("<b>#%d:</b> ❌ <b>Dead / Expired Link (404)</b>\n<i>Source returned invalid token or HubCloud ID not found</i>\n\n", i+1))
+		} else if res.Err != nil {
+			itemSB.WriteString(fmt.Sprintf("<b>#%d:</b> ⚠️ <b>Resolution Failed</b>: %s\n\n", i+1, html.EscapeString(res.Err.Error())))
 		} else {
-			destLabel := "Destination:"
-			if strings.Contains(res.Destination, "hubcloud") {
-				destLabel = "HubCloud:"
+			tag := "⚡"
+			if !res.FromCache {
+				tag = "🔄"
 			}
-			itemSB.WriteString(fmt.Sprintf("%s %s\n", destLabel, res.Destination))
-			itemSB.WriteString(fmt.Sprintf("Speed: %s\n", formatDuration(res.Duration)))
+			dest := res.Destination
+			// Strict Rule: Never output mediator link, ONLY HubCloud!
+			if strings.Contains(dest, "hubcloud") {
+				itemSB.WriteString(fmt.Sprintf("<b>#%d:</b> %s <a href=\"%s\"><b>Direct HubCloud Link</b></a>\n<code>%s</code>\n⚡ Speed: %s\n\n", i+1, tag, dest, dest, formatDuration(res.Duration)))
+			} else {
+				itemSB.WriteString(fmt.Sprintf("<b>#%d:</b> ⚠️ <i>Skipped non-HubCloud link</i>\n\n", i+1))
+			}
 		}
 		itemStr := itemSB.String()
 		resultLines = append(resultLines, itemStr)
 		fullSB.WriteString(itemStr)
-		fullSB.WriteString("\n")
 	}
 
 	if fullSB.Len() < 3500 && statusMsg != nil {
 		_, err := b.teleBot.Edit(statusMsg, fullSB.String(), tele.ModeHTML)
 		if err == nil {
-			return nil
+			return
 		}
 	}
 
 	if statusMsg != nil {
-		statusDone := fmt.Sprintf("%s\n<i>Batch complete! Delivering all %d links below:</i>", header, totalLinks)
+		statusDone := fmt.Sprintf("%s<i>Delivering all %d resolved links below:</i>", header, total)
 		_, _ = b.teleBot.Edit(statusMsg, statusDone, tele.ModeHTML)
 	}
 
-	return b.sendChunkedMessages(c.Recipient(), header, resultLines)
+	_ = b.sendChunkedMessages(c.Recipient(), header, resultLines)
 }
 
 func calculateHitRatio(hits, misses uint64) float64 {

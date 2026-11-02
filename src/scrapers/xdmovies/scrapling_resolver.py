@@ -4,15 +4,72 @@ import json
 import os
 import tempfile
 import shutil
+import urllib.request
+import urllib.error
 from scrapling.engines._browsers._stealth import StealthySession
 
 def resolve_mediator(url):
     started_at = time.time()
-    result = {"success": False, "destination": None, "error": None, "elapsedMs": 0}
+    result = {"success": False, "destination": None, "error": None, "elapsedMs": 0, "isDead": False}
     captured_dest = []
+
+    # ── Fail-Fast Pre-Flight Check (< 500ms) ─────────────────────────
+    # Quickly probe HTTP headers and initial payload without launching heavy browsers
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=4) as response:
+            status = response.getcode()
+            body_sample = response.read(1024).decode("utf-8", errors="ignore")
+            if status in (404, 410, 500, 502):
+                return {
+                    "success": False,
+                    "isDead": True,
+                    "destination": None,
+                    "error": f"HTTP {status} (Dead Link)",
+                    "elapsedMs": int((time.time() - started_at) * 1000)
+                }
+            if "not found in JSONs" in body_sample or '"error"' in body_sample[:150]:
+                return {
+                    "success": False,
+                    "isDead": True,
+                    "destination": None,
+                    "error": "Dead link: Invalid token / HubCloud ID not found in JSONs",
+                    "elapsedMs": int((time.time() - started_at) * 1000)
+                }
+    except urllib.error.HTTPError as e:
+        error_body = ""
+        try:
+            error_body = e.read(1024).decode("utf-8", errors="ignore")
+        except Exception:
+            pass
+        return {
+            "success": False,
+            "isDead": True,
+            "destination": None,
+            "error": f"HTTP {e.code}: {error_body.strip() if error_body else 'Dead Link'}",
+            "elapsedMs": int((time.time() - started_at) * 1000)
+        }
+    except Exception:
+        # Network transient error or redirect; let browser attempt unless 404
+        pass
 
     def page_automation(page):
         ctx = page.context
+
+        # Early DOM/JSON Inspection immediately after navigation
+        try:
+            body_text = page.inner_text("body")
+            if "not found in JSONs" in body_text or '"error"' in body_text[:120]:
+                result["isDead"] = True
+                result["error"] = "Invalid token / HubCloud ID not found in JSONs"
+                return
+        except Exception:
+            pass
 
         # Helper to check if a URL is hubcloud drive
         def check_url(u):
