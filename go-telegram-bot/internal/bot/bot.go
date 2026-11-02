@@ -553,7 +553,7 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 			defer wg.Done()
 			defer atomic.AddInt32(&completedCount, 1)
 
-			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 			defer cancel()
 
 			itemStart := time.Now()

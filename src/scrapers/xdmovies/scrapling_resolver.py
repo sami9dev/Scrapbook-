@@ -47,15 +47,19 @@ def resolve_mediator(url):
             error_body = e.read(1024).decode("utf-8", errors="ignore")
         except Exception:
             pass
-        return {
-            "success": False,
-            "isDead": True,
-            "destination": None,
-            "error": f"HTTP {e.code}: {error_body.strip() if error_body else 'Dead Link'}",
-            "elapsedMs": int((time.time() - started_at) * 1000)
-        }
+        # Only 404/410 or explicit "not found in JSONs" is a true dead link!
+        # Cloudflare 403 / 503 means Turnstile challenge is active and requires StealthySession!
+        if e.code in (404, 410) or "not found in JSONs" in error_body:
+            return {
+                "success": False,
+                "isDead": True,
+                "destination": None,
+                "error": f"HTTP {e.code}: {error_body.strip() if error_body else 'Dead Link'}",
+                "elapsedMs": int((time.time() - started_at) * 1000)
+            }
+        # Otherwise (403 Cloudflare challenge, etc.) let browser attempt
     except Exception:
-        # Network transient error or redirect; let browser attempt unless 404
+        # Network transient error or redirect; let browser attempt
         pass
 
     def page_automation(page):
