@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HubCloud Instant Solver</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111726;
+      --card-border: #1e293b;
+      --card-hover: #172033;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --hubcloud: #10b981;
+      --hubcloud-glow: rgba(16, 185, 129, 0.25);
+      --hubcloud-hover: #059669;
+      --accent-blue: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.25);
+      --error: #ef4444;
+      --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px 80px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Ambient background glow */
+    body::before {
+      content: '';
+      position: absolute;
+      top: -120px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 700px;
+      height: 450px;
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.12) 0%, rgba(59, 130, 246, 0.08) 50%, transparent 80%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 860px;
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Header & Branding */
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+      margin-top: 20px;
+    }
+
+    .logo-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: var(--hubcloud);
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 2.75rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      max-width: 560px;
+      margin: 0 auto;
+      line-height: 1.5;
+    }
+
+    /* Input & Search Box */
+    .solver-box {
+      width: 100%;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 8px 10px 8px 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+      transition: all 0.2s ease;
+      margin-bottom: 16px;
+    }
+
+    .solver-box:focus-within {
+      border-color: var(--hubcloud);
+      box-shadow: 0 12px 35px -8px var(--hubcloud-glow), 0 0 0 1px var(--hubcloud);
+    }
+
+    .search-icon {
+      color: var(--text-muted);
+      font-size: 1.25rem;
+      display: flex;
+      align-items: center;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 1.05rem;
+      padding: 10px 0;
+    }
+
+    input[type="text"]::placeholder {
+      color: #64748b;
+    }
+
+    .btn-clear {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1.1rem;
+      padding: 6px;
+      border-radius: 6px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn-clear:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .btn-paste {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .btn-paste:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text);
+    }
+
+    .btn-solve {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #ffffff;
+      border: none;
+      font-family: var(--font-sans);
+      font-size: 0.95rem;
+      font-weight: 700;
+      padding: 12px 24px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+    }
+
+    .btn-solve:hover {
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45);
+    }
+
+    .btn-solve:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* Quick Sample Chips */
+    .sample-chips {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 32px;
+    }
+
+    .sample-label {
+      font-size: 0.8rem;
+      color: #64748b;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .chip {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .chip:hover {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: rgba(59, 130, 246, 0.4);
+      color: #60a5fa;
+    }
+
+    /* Status & Loading Indicator */
+    .status-panel {
+      width: 100%;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+      margin-bottom: 24px;
+      display: none;
+    }
+
+    .spinner {
+      width: 38px;
+      height: 38px;
+      border: 3px solid rgba(16, 185, 129, 0.15);
+      border-top-color: var(--hubcloud);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 14px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .status-title {
+      font-weight: 700;
+      font-size: 1.05rem;
+      margin-bottom: 6px;
+    }
+
+    .status-desc {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    /* Results Container */
+    .results-container {
+      width: 100%;
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 4px;
+    }
+
+    .results-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .release-count-badge {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--hubcloud);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    /* Release Cards */
+    .release-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      transition: all 0.2s ease;
+    }
+
+    .release-card:hover {
+      background: var(--card-hover);
+      border-color: rgba(16, 185, 129, 0.4);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.4);
+    }
+
+    .release-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .release-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+
+    .badge-quality {
+      background: #1e293b;
+      color: #38bdf8;
+      border: 1px solid #334155;
+      font-size: 0.75rem;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+    }
+
+    .badge-codec {
+      background: rgba(168, 85, 247, 0.15);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-family: var(--font-mono);
+    }
+
+    .badge-size {
+      background: rgba(245, 158, 11, 0.12);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-family: var(--font-mono);
+    }
+
+    .release-filename {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-family: var(--font-mono);
+      line-height: 1.4;
+    }
+
+    .release-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn-download {
+      background: var(--hubcloud);
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.9rem;
+      padding: 10px 18px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    }
+
+    .btn-download:hover {
+      background: var(--hubcloud-hover);
+      box-shadow: 0 6px 16px rgba(16, 185, 129, 0.45);
+      transform: translateY(-1px);
+    }
+
+    .btn-copy {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .btn-copy:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text);
+      border-color: #475569;
+    }
+
+    /* History & Cache Section */
+    .history-card {
+      width: 100%;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 20px;
+      margin-top: 12px;
+    }
+
+    .history-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .history-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-clear-history {
+      background: transparent;
+      border: none;
+      color: #64748b;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .btn-clear-history:hover {
+      color: var(--error);
+    }
+
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      background: rgba(30, 41, 59, 0.4);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      font-size: 0.88rem;
+    }
+
+    .history-item-title {
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 500px;
+    }
+
+    .history-item-link {
+      color: var(--hubcloud);
+      text-decoration: none;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .history-item-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      h1 { font-size: 2.1rem; }
+      .solver-box {
+        flex-direction: column;
+        padding: 12px;
+      }
+      input[type="text"] {
+        width: 100%;
+      }
+      .btn-solve {
+        width: 100%;
+        justify-content: center;
+      }
+      .release-card {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .release-actions {
+        width: 100%;
+        justify-content: space-between;
+      }
+      .btn-download, .btn-copy {
+        flex: 1;
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="logo-badge">⚡ Instant HubCloud Resolver</div>
+      <h1>Direct HubCloud Solver</h1>
+      <p class="subtitle">Paste any XDMovies mediator download link or movie page to get direct 1-click HubCloud links instantly.</p>
+    </header>
+
+    <!-- Search / Solver Input Box -->
+    <div class="solver-box">
+      <div class="search-icon">🔗</div>
+      <input 
+        type="text" 
+        id="urlInput" 
+        placeholder="Paste mediator link (https://link.xdmovies.wtf/download/...) or movie URL"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button class="btn-clear" id="btnClear" title="Clear input">✕</button>
+      <button class="btn-paste" id="btnPaste" title="Paste from clipboard">📋 Paste</button>
+      <button class="btn-solve" id="btnSolve">
+        <span>⚡ Resolve Link</span>
+      </button>
+    </div>
+
+    <!-- Quick Sample Chips -->
+    <div class="sample-chips">
+      <span class="sample-label">Try Examples:</span>
+      <span class="chip" data-query="https://huh.xdmovies.wtf/movies/beast-2160p-1080p-hindi-tamil-download-800383">Beast (2022) [All 6 Releases]</span>
+      <span class="chip" data-query="https://link.xdmovies.wtf/download/9OlrAxRKyEWQPjTkEtQzTu2lWtNuLELvj2R_pdFqN54">Baahubali 2 (36GB Remux)</span>
+      <span class="chip" data-query="https://link.xdmovies.wtf/download/1htsHpcm4PMuLG7r6jMr5cwGe-a2kcrNZoXFzxQw0To">Beast 720p H.264</span>
+      <span class="chip" data-query="https://huh.xdmovies.wtf/series/apharan-1080p-720p-hindi-download-84962">Apharan (S01 & S02 Packs)</span>
+    </div>
+
+    <!-- Loading / Status Panel -->
+    <div class="status-panel" id="statusPanel">
+      <div class="spinner"></div>
+      <div class="status-title" id="statusTitle">Connecting to database & cache...</div>
+      <div class="status-desc" id="statusDesc">Checking pre-indexed HubCloud destinations for instant delivery.</div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="results-container" id="resultsContainer">
+      <div class="results-header">
+        <div class="results-title">
+          <span id="resultsTitleText">Available HubCloud Downloads</span>
+          <span class="release-count-badge" id="resultsCountBadge">0 Links</span>
+        </div>
+      </div>
+      <div id="releasesList"></div>
+    </div>
+
+    <!-- Recent History -->
+    <div class="history-card" id="historyCard" style="display: none;">
+      <div class="history-header">
+        <div class="history-title">🕒 Recently Resolved Links</div>
+        <button class="btn-clear-history" id="btnClearHistory">Clear History</button>
+      </div>
+      <div class="history-list" id="historyList"></div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
+      ? window.location.origin
+      : 'https://scrapbook-0mrx.onrender.com';
+
+    const urlInput = document.getElementById('urlInput');
+    const btnClear = document.getElementById('btnClear');
+    const btnPaste = document.getElementById('btnPaste');
+    const btnSolve = document.getElementById('btnSolve');
+    const statusPanel = document.getElementById('statusPanel');
+    const statusTitle = document.getElementById('statusTitle');
+    const statusDesc = document.getElementById('statusDesc');
+    const resultsContainer = document.getElementById('resultsContainer');
+    const resultsTitleText = document.getElementById('resultsTitleText');
+    const resultsCountBadge = document.getElementById('resultsCountBadge');
+    const releasesList = document.getElementById('releasesList');
+    const historyCard = document.getElementById('historyCard');
+    const historyList = document.getElementById('historyList');
+    const btnClearHistory = document.getElementById('btnClearHistory');
+
+    // Load recent history
+    function loadHistory() {
+      const items = JSON.parse(localStorage.getItem('hubcloud_history') || '[]');
+      if (items.length === 0) {
+        historyCard.style.display = 'none';
+        return;
+      }
+      historyCard.style.display = 'block';
+      historyList.innerHTML = items.map(item => `
+        <div class="history-item">
+          <div class="history-item-title">${escapeHtml(item.title || item.filename || 'Resolved File')}</div>
+          <a class="history-item-link" href="${item.url}" target="_blank" rel="noopener">⚡ HubCloud ↗</a>
+        </div>
+      `).join('');
+    }
+
+    function saveToHistory(entry) {
+      let items = JSON.parse(localStorage.getItem('hubcloud_history') || '[]');
+      items = items.filter(i => i.url !== entry.url);
+      items.unshift(entry);
+      if (items.length > 8) items.pop();
+      localStorage.setItem('hubcloud_history', JSON.stringify(items));
+      loadHistory();
+    }
+
+    btnClearHistory.addEventListener('click', () => {
+      localStorage.removeItem('hubcloud_history');
+      loadHistory();
+    });
+
+    // Input handlers
+    urlInput.addEventListener('input', () => {
+      btnClear.style.display = urlInput.value ? 'flex' : 'none';
+    });
+
+    btnClear.addEventListener('click', () => {
+      urlInput.value = '';
+      btnClear.style.display = 'none';
+      urlInput.focus();
+    });
+
+    btnPaste.addEventListener('click', async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          urlInput.value = text.trim();
+          btnClear.style.display = 'flex';
+          executeSolve();
+        }
+      } catch (err) {
+        urlInput.focus();
+      }
+    });
+
+    urlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') executeSolve();
+    });
+
+    btnSolve.addEventListener('click', executeSolve);
+
+    document.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        urlInput.value = chip.getAttribute('data-query');
+        btnClear.style.display = 'flex';
+        executeSolve();
+      });
+    });
+
+    async function executeSolve() {
+      const query = urlInput.value.trim();
+      if (!query) return;
+
+      resultsContainer.style.display = 'none';
+      statusPanel.style.display = 'block';
+      btnSolve.disabled = true;
+      statusTitle.textContent = 'Searching Pre-Indexed Database...';
+      statusDesc.textContent = 'Querying cloud catalogue for instant HubCloud destination...';
+
+      try {
+        // Step 1: Query API for cached / stored links
+        const res = await fetch(`${API_BASE}/api/links?limit=500`);
+        const allItems = await res.json();
+
+        const normQuery = query.toLowerCase().replace(/\/+$/, '');
+        let matched = [];
+
+        // Check if query is an exact mediator URL
+        matched = allItems.filter(item => {
+          if (!item.providerUrl || !item.providerUrl.includes('hubcloud')) return false;
+          const med = (item.mediatorUrl || '').toLowerCase();
+          return med === normQuery || (med && normQuery.includes(med)) || (item.mediatorUrl && item.mediatorUrl === query);
+        });
+
+        // If not matched by mediator, check by SourceURL or title slug
+        if (matched.length === 0) {
+          const slug = normQuery.split('/').pop();
+          matched = allItems.filter(item => {
+            if (!item.providerUrl || !item.providerUrl.includes('hubcloud')) return false;
+            const src = (item.sourceUrl || '').toLowerCase();
+            return src === normQuery || (slug && src.includes(slug));
+          });
+        }
+
+        // Case A: Found pre-indexed HubCloud links!
+        if (matched.length > 0) {
+          renderResults(matched, query);
+          return;
+        }
+
+        // Case B: Not found in pre-indexed catalogue, try on-demand resolve-link
+        statusTitle.textContent = 'Resolving Mediator Redirects...';
+        statusDesc.textContent = 'Bypassing mediator countdown and verifying direct HubCloud link...';
+
+        const resolveRes = await fetch(`${API_BASE}/api/resolve-link`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mediatorUrl: query })
+        });
+
+        const resolveData = await resolveRes.json();
+        if (resolveData.success && resolveData.destination && resolveData.destination.includes('hubcloud')) {
+          renderResults([
+            {
+              title: resolveData.title || 'Resolved File',
+              filename: resolveData.title || query,
+              quality: 'HD',
+              sizeDisplay: '',
+              providerUrl: resolveData.destination
+            }
+          ], query);
+          return;
+        }
+
+        throw new Error(resolveData.error || 'Destination HubCloud link could not be automatically resolved.');
+
+      } catch (err) {
+        statusTitle.textContent = 'Resolution Notice';
+        statusDesc.innerHTML = `<span style="color: #ef4444;">⚠️ ${escapeHtml(err.message)}</span><br><br>👉 You can paste this mediator link directly into <a href="https://t.me/Linkscrap_bot" target="_blank" style="color: #38bdf8; font-weight: 600;">@Linkscrap_bot</a> in Telegram to resolve it instantly.`;
+      } finally {
+        btnSolve.disabled = false;
+      }
+    }
+
+    function renderResults(items, originalQuery) {
+      statusPanel.style.display = 'none';
+      resultsContainer.style.display = 'flex';
+
+      // Sort by Quality (2160p -> 1080p -> 720p -> 480p)
+      const rank = q => {
+        q = (q || '').toLowerCase();
+        if (q.includes('2160') || q.includes('4k')) return 40;
+        if (q.includes('1080')) return 30;
+        if (q.includes('720')) return 20;
+        if (q.includes('480')) return 10;
+        return 5;
+      };
+
+      items.sort((a, b) => rank(b.quality) - rank(a.quality));
+
+      resultsCountBadge.textContent = `${items.length} HubCloud Link${items.length > 1 ? 's' : ''}`;
+      
+      const displayTitle = items[0].title || 'Available Releases';
+      resultsTitleText.textContent = displayTitle;
+
+      releasesList.innerHTML = items.map((item, index) => {
+        const quality = (item.quality || 'HD').toUpperCase();
+        const codec = item.codec || (item.filename && item.filename.includes('H.264') ? 'H.264' : (item.filename && item.filename.includes('H.265') ? 'H.265' : ''));
+        const size = item.sizeDisplay || '';
+        const name = item.filename || item.title || `Release #${index + 1}`;
+        const hubUrl = item.providerUrl;
+
+        // Save first match to history
+        if (index === 0) {
+          saveToHistory({ title: name, url: hubUrl });
+        }
+
+        return `
+          <div class="release-card">
+            <div class="release-info">
+              <div class="release-meta">
+                <span class="badge-quality">⚡ ${escapeHtml(quality)}</span>
+                ${codec ? `<span class="badge-codec">${escapeHtml(codec)}</span>` : ''}
+                ${size ? `<span class="badge-size">💾 ${escapeHtml(size)}</span>` : ''}
+              </div>
+              <div class="release-filename" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+            </div>
+            <div class="release-actions">
+              <button class="btn-copy" onclick="copyLink('${escapeHtml(hubUrl)}', this)">
+                <span>📋 Copy</span>
+              </button>
+              <a class="btn-download" href="${escapeHtml(hubUrl)}" target="_blank" rel="noopener">
+                <span>⚡ Download</span>
+              </a>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function copyLink(url, btn) {
+      navigator.clipboard.writeText(url).then(() => {
+        const origText = btn.innerHTML;
+        btn.innerHTML = '<span>✅ Copied!</span>';
+        btn.style.borderColor = '#10b981';
+        btn.style.color = '#10b981';
+        setTimeout(() => {
+          btn.innerHTML = origText;
+          btn.style.borderColor = '';
+          btn.style.color = '';
+        }, 1800);
+      });
+    }
+
+    function escapeHtml(str) {
+      return (str || '').replace(/[&<>"']/g, m => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      })[m]);
+    }
+
+    // Initialize history on load
+    loadHistory();
+  </script>
+</body>
+</html>

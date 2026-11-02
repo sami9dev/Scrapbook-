@@ -233,11 +233,14 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 			return qualityRank(releases[i].Quality) > qualityRank(releases[j].Quality)
 		})
 
-		for idx, m := range releases {
+		itemNum := 0
+		for _, m := range releases {
 			dest := m.ProviderURL
-			if dest == "" {
-				dest = m.MediatorURL
+			// Strict rule: never give mediator links, ONLY HubCloud
+			if !strings.Contains(dest, "hubcloud") {
+				continue
 			}
+			itemNum++
 			sizeStr := m.SizeDisplay
 			sizePart := ""
 			if sizeStr != "" {
@@ -247,14 +250,8 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 			if name == "" {
 				name = m.Title
 			}
-			destLabel := "Destination:"
-			if strings.Contains(dest, "hubcloud") {
-				destLabel = "⚡ HubCloud:"
-			} else {
-				destLabel = "🔗 Mediator Link:"
-			}
-			sb.WriteString(fmt.Sprintf("<b>#%d: ⚡ %s</b>\n%s<a href=\"%s\">%s</a>\n%s %s\n\n",
-				idx+1, strings.ToUpper(m.Quality), sizePart, dest, html.EscapeString(name), destLabel, dest))
+			sb.WriteString(fmt.Sprintf("<b>#%d: ⚡ %s</b>\n%s<a href=\"%s\">%s</a>\n⚡ HubCloud: %s\n\n",
+				itemNum, strings.ToUpper(m.Quality), sizePart, dest, html.EscapeString(name), dest))
 		}
 
 		if statusMsg != nil {
@@ -276,8 +273,9 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 	packMap := make(map[int][]qualityOpt)
 	for _, p := range series.Packs {
 		dest := p.ProviderURL
-		if dest == "" {
-			dest = p.MediatorURL
+		// Strict rule: never give mediator links, ONLY HubCloud
+		if !strings.Contains(dest, "hubcloud") {
+			continue
 		}
 		s := p.Season
 		if s == 0 {
@@ -348,8 +346,9 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 
 		for _, ep := range series.Episodes {
 			dest := ep.ProviderURL
-			if dest == "" {
-				dest = ep.MediatorURL
+			// Strict rule: never give mediator links, ONLY HubCloud
+			if !strings.Contains(dest, "hubcloud") {
+				continue
 			}
 			q := ep.Quality
 			if q == "" {

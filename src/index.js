@@ -35,6 +35,11 @@ export async function createApp() {
     res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
   });
 
+  // Simple Instant Solver UI
+  app.get('/solver', (req, res) => {
+    res.sendFile(path.join(publicDir, 'solver.html'));
+  });
+
   // Fallback to Admin UI for root
   app.get('/', (req, res) => {
     res.sendFile(path.join(publicDir, 'index.html'));
