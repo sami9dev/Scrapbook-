@@ -1,10 +1,8 @@
 package bot
 
 import (
-	"errors"
-	"sync"
-	"sync/atomic"
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"log"
@@ -12,6 +10,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	tele "gopkg.in/telebot.v3"
@@ -553,13 +553,10 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 			defer wg.Done()
 			defer atomic.AddInt32(&completedCount, 1)
 
-			ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
-			defer cancel()
-
 			itemStart := time.Now()
 
 			// 1. Check 3-Tier Cache (L1 sync.Map -> L2 Redis -> L3 MongoDB) BEFORE semaphore
-			if cachedDest, hit, err := b.cache.Get(ctx, rawURL); hit {
+			if cachedDest, hit, err := b.cache.Get(context.Background(), rawURL); hit {
 				atomic.AddInt32(&cacheHits, 1)
 				if errors.Is(err, cache.ErrDeadLink) {
 					results[idx] = resolver.Result{
@@ -585,6 +582,11 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
+			// Start the resolver deadline after acquiring a slot so queue wait does
+			// not consume the time available for the actual resolution.
+			ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+			defer cancel()
+
 			// 3. Re-check cache in case duplicate finished while waiting
 			if cachedDest, hit, err := b.cache.Get(ctx, rawURL); hit {
 				atomic.AddInt32(&cacheHits, 1)
@@ -609,7 +611,7 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 			}
 
 			// 4. Resolve via Engine (with fail-fast dead check)
-			res := b.resolver.Resolve(ctx, rawURL)
+			res := b.resolver.ResolveAfterCacheMiss(ctx, rawURL)
 			results[idx] = res
 		}(i, targetURL)
 	}

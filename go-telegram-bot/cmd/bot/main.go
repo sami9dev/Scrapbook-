@@ -53,8 +53,9 @@ func main() {
 		}
 	}
 
-	memCache := cache.NewMultiTierCache(rdb, mongoCol)
-	log.Printf("[Init] 3-Tier Cache initialized (L1 sync.Map: active, L2 Redis: %v, L3 Mongo: %v)\n", rdb != nil, mongoCol != nil)
+	memCache := cache.NewMultiTierCacheWithREST(rdb, mongoCol, cfg.RedisRESTURL, cfg.RedisRESTToken)
+	l2Active := rdb != nil || (cfg.RedisRESTURL != "" && cfg.RedisRESTToken != "")
+	log.Printf("[Init] 3-Tier Cache initialized (L1 sync.Map: active, L2 Redis: %v, L3 Mongo: %v)\n", l2Active, mongoCol != nil)
 
 	// 2. Initialize Link Resolver (with Rust Worker connection)
 	resEngine := resolver.New(memCache, cfg.LocalResolverAPI, cfg.RustWorkerURL, cfg.TelegramBotToken, cfg.RequestTimeout)

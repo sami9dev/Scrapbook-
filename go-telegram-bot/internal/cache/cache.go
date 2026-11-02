@@ -2,7 +2,14 @@ package cache
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -41,12 +48,15 @@ type MongoLinkDoc struct {
 }
 
 type MultiTierCache struct {
-	l1Memory sync.Map // L1: < 0.01ms in-memory cache
-	l2Redis  *redis.Client
-	l3Mongo  *mongo.Collection
-	hits     uint64
-	misses   uint64
-	deadHits uint64
+	l1Memory     sync.Map // L1: < 0.01ms in-memory cache
+	l2Redis      *redis.Client
+	l2RESTURL    string
+	l2RESTToken  string
+	l2RESTClient *http.Client
+	l3Mongo      *mongo.Collection
+	hits         uint64
+	misses       uint64
+	deadHits     uint64
 }
 
 // MemoryCache alias for seamless backward compatibility
@@ -61,6 +71,100 @@ func NewMultiTierCache(rdb *redis.Client, mongoCol *mongo.Collection) *MultiTier
 		l2Redis: rdb,
 		l3Mongo: mongoCol,
 	}
+}
+
+// NewMultiTierCacheWithREST supports the Upstash REST credentials used by the
+// Render service while preserving the Redis TCP client for local deployments.
+func NewMultiTierCacheWithREST(rdb *redis.Client, mongoCol *mongo.Collection, restURL, restToken string) *MultiTierCache {
+	c := NewMultiTierCache(rdb, mongoCol)
+	c.l2RESTURL = strings.TrimRight(restURL, "/")
+	c.l2RESTToken = restToken
+	c.l2RESTClient = &http.Client{
+		Transport: &http.Transport{
+			Proxy:               http.ProxyFromEnvironment,
+			MaxIdleConns:        20,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     90 * time.Second,
+		},
+	}
+	return c
+}
+
+func (c *MultiTierCache) hasL2() bool {
+	return c.l2Redis != nil || (c.l2RESTURL != "" && c.l2RESTToken != "")
+}
+
+func (c *MultiTierCache) l2Key(rawURL string) string {
+	if c.l2Redis != nil {
+		return "linkscrap:" + rawURL
+	}
+	keyHash := sha256.Sum256([]byte(strings.TrimSpace(rawURL)))
+	return "cinefuel:cache:link:" + hex.EncodeToString(keyHash[:])
+}
+
+func (c *MultiTierCache) getL2(ctx context.Context, rawURL string) (string, error) {
+	key := c.l2Key(rawURL)
+	if c.l2Redis != nil {
+		return c.l2Redis.Get(ctx, key).Result()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.l2RESTURL+"/get/"+key, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.l2RESTToken)
+	resp, err := c.l2RESTClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return "", fmt.Errorf("Upstash REST GET returned HTTP %d", resp.StatusCode)
+	}
+	var payload struct {
+		Result *string `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", err
+	}
+	if payload.Result == nil {
+		return "", redis.Nil
+	}
+	return *payload.Result, nil
+}
+
+func (c *MultiTierCache) setL2(ctx context.Context, rawURL, value string, ttl time.Duration) error {
+	key := c.l2Key(rawURL)
+	if c.l2Redis != nil {
+		return c.l2Redis.Set(ctx, key, value, ttl).Err()
+	}
+
+	ttlSeconds := int64(ttl / time.Second)
+	if ttlSeconds < 1 {
+		ttlSeconds = 1
+	}
+	body, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		fmt.Sprintf("%s/set/%s?ex=%d", c.l2RESTURL, key, ttlSeconds), strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.l2RESTToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.l2RESTClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("Upstash REST SET returned HTTP %d", resp.StatusCode)
+	}
+	return nil
 }
 
 // Get checks L1 (sync.Map) -> L2 (Upstash Redis) -> L3 (MongoDB) and backfills upper tiers.
@@ -98,14 +202,18 @@ func (c *MultiTierCache) Get(ctx context.Context, rawURL string) (string, bool, 
 	}
 
 	// 2. Check L2 (Upstash Redis) - ~5-15ms
-	if c.l2Redis != nil {
+	if c.hasL2() {
 		rCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		if redisVal, err := c.l2Redis.Get(rCtx, "linkscrap:"+rawURL).Result(); err == nil && redisVal != "" {
+		if redisVal, err := c.getL2(rCtx, rawURL); err == nil && redisVal != "" {
+			ttl := ValidLinkTTL
+			if redisVal == DeadLinkSentinel {
+				ttl = DeadLinkTTL
+			}
 			c.l1Memory.Store(rawURL, Item{
 				Destination: redisVal,
 				CreatedAt:   time.Now(),
-				ExpiresAt:   time.Now().Add(ValidLinkTTL),
+				ExpiresAt:   time.Now().Add(ttl),
 				IsDead:      redisVal == DeadLinkSentinel,
 			})
 			atomic.AddUint64(&c.hits, 1)
@@ -141,11 +249,11 @@ func (c *MultiTierCache) Get(ctx context.Context, rawURL string) (string, bool, 
 				CreatedAt:   time.Now(),
 				ExpiresAt:   time.Now().Add(ValidLinkTTL),
 			})
-			if c.l2Redis != nil {
+			if c.hasL2() {
 				go func(u, res string) {
 					bgCtx, bCancel := context.WithTimeout(context.Background(), 3*time.Second)
 					defer bCancel()
-					_ = c.l2Redis.Set(bgCtx, "linkscrap:"+u, res, ValidLinkTTL).Err()
+					_ = c.setL2(bgCtx, u, res, ValidLinkTTL)
 				}(rawURL, resolved)
 			}
 			atomic.AddUint64(&c.hits, 1)
@@ -173,8 +281,8 @@ func (c *MultiTierCache) SetValid(ctx context.Context, rawURL, resolvedURL strin
 		defer cancel()
 
 		// Save to L2 (Redis)
-		if c.l2Redis != nil {
-			_ = c.l2Redis.Set(bgCtx, "linkscrap:"+rawURL, resolvedURL, ValidLinkTTL).Err()
+		if c.hasL2() {
+			_ = c.setL2(bgCtx, rawURL, resolvedURL, ValidLinkTTL)
 		}
 
 		// Upsert to L3 (MongoDB)
@@ -212,11 +320,11 @@ func (c *MultiTierCache) SetDead(rawURL string) {
 		ExpiresAt:   time.Now().Add(DeadLinkTTL),
 		IsDead:      true,
 	})
-	if c.l2Redis != nil {
+	if c.hasL2() {
 		go func() {
 			bgCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			_ = c.l2Redis.Set(bgCtx, "linkscrap:"+rawURL, DeadLinkSentinel, DeadLinkTTL).Err()
+			_ = c.setL2(bgCtx, rawURL, DeadLinkSentinel, DeadLinkTTL)
 		}()
 	}
 }

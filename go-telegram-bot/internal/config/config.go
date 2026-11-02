@@ -16,6 +16,8 @@ type Config struct {
 	RustWorkerURL    string
 	RequestTimeout   time.Duration
 	RedisURL         string
+	RedisRESTURL     string
+	RedisRESTToken   string
 	MongoURI         string
 }
 
@@ -47,6 +49,8 @@ func Load() *Config {
 	if redisURL == "" {
 		redisURL = os.Getenv("UPSTASH_REDIS_URL")
 	}
+	redisRESTURL := os.Getenv("UPSTASH_REDIS_REST_URL")
+	redisRESTToken := os.Getenv("UPSTASH_REDIS_REST_TOKEN")
 	mongoURI := os.Getenv("MONGODB_URI")
 
 	return &Config{
@@ -57,6 +61,8 @@ func Load() *Config {
 		RustWorkerURL:    rustWorkerURL,
 		RequestTimeout:   time.Duration(timeoutSec) * time.Second,
 		RedisURL:         redisURL,
+		RedisRESTURL:     redisRESTURL,
+		RedisRESTToken:   redisRESTToken,
 		MongoURI:         mongoURI,
 	}
 }

@@ -142,9 +142,23 @@ func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*Serie
 	slug := extractSlug(normQuery)
 	var matched []StoredLink
 
+	slugTitle := extractSlugTitle(slug)
+	slugWords := strings.Split(slugTitle, "-")
+
 	for _, item := range allItems {
 		itemSrc := strings.TrimRight(strings.ToLower(item.SourceURL), "/")
+		itemTitle := strings.ToLower(item.Title)
+		// Check exact source URL or slug match
 		if itemSrc == normQuery || (slug != "" && strings.Contains(itemSrc, slug)) {
+			matched = append(matched, item)
+			continue
+		}
+		// Check title match using slug keywords (e.g. 'players' in 'the.players.2012...')
+		if slugTitle != "" && strings.Contains(itemTitle, slugTitle) {
+			matched = append(matched, item)
+			continue
+		}
+		if len(slugWords) > 0 && slugWords[0] != "" && strings.Contains(itemTitle, slugWords[0]) {
 			matched = append(matched, item)
 		}
 	}
@@ -268,6 +282,19 @@ func extractSlug(urlStr string) string {
 	return urlStr
 }
 
+// extractSlugTitle extracts the clean movie title from a slug like 'players-1080p-720p-hindi-download-83382'
+func extractSlugTitle(slug string) string {
+	slug = strings.ToLower(slug)
+	// Remove trailing ID digits if any
+	for _, sep := range []string{"-2160p", "-1080p", "-720p", "-480p", "-download", "-hindi", "-tamil", "-telugu"} {
+		if idx := strings.Index(slug, sep); idx != -1 {
+			slug = slug[:idx]
+		}
+	}
+	// Replace dashes with dots or spaces for matching against title
+	return strings.Trim(slug, "-_ ")
+}
+
 func extractDisplayTitle(rawTitle string) string {
 	for _, sep := range []string{"S0", "2160p", "1080p", "720p", "480p", "("} {
 		if idx := strings.Index(strings.ToLower(rawTitle), strings.ToLower(sep)); idx != -1 {
@@ -312,6 +339,18 @@ func (r *Resolver) Resolve(ctx context.Context, rawURL string) Result {
 			Err:         nil,
 		}
 	}
+
+	return r.resolveAfterCacheMiss(ctx, rawURL, start)
+}
+
+// ResolveAfterCacheMiss skips the cache lookup when a caller has already
+// checked it, avoiding a duplicate remote lookup on batch misses.
+func (r *Resolver) ResolveAfterCacheMiss(ctx context.Context, rawURL string) Result {
+	rawURL = strings.TrimSpace(rawURL)
+	return r.resolveAfterCacheMiss(ctx, rawURL, time.Now())
+}
+
+func (r *Resolver) resolveAfterCacheMiss(ctx context.Context, rawURL string, start time.Time) Result {
 
 	// 2. Resolve via Local Scraper Daemon (with browser & fail-fast dead check)
 	dest, title, err := r.resolveViaBackend(ctx, rawURL)
@@ -408,7 +447,6 @@ func (r *Resolver) resolveViaBackend(ctx context.Context, targetURL string) (str
 	if result.IsDead || strings.Contains(result.Error, "404") || strings.Contains(result.Error, "not found in JSONs") {
 		return "", "", cache.ErrDeadLink
 	}
-
 
 	if !result.Success || result.Destination == "" {
 		errMsg := result.Error
@@ -686,4 +724,3 @@ func (r *Resolver) EnqueueBatchJob(ctx context.Context, urls []string, chatID in
 
 	return &res, nil
 }
-
