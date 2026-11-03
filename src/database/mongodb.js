@@ -173,6 +173,10 @@ class DatabaseManager {
   async connect(uri = config.mongodbUri, options = {}) {
     if (this.db) return this.db;
 
+    if (config.nodeEnv === 'production' && !process.env.MONGODB_URI && uri === config.mongodbUri) {
+      throw new Error('MONGODB_URI is required in production; refusing an in-memory database fallback.');
+    }
+
     if (options.forceInMemory) {
       logger.database('Initializing in-memory database storage (forced).');
       this.db = new InMemoryDb();
@@ -193,6 +197,11 @@ class DatabaseManager {
       logger.database(`Connected to MongoDB at ${uri.replace(/\/\/.*@/, '//***@')}`);
       return this.db;
     } catch (err) {
+      if (config.nodeEnv === 'production') {
+        await this.client?.close().catch(() => {});
+        this.client = null;
+        throw new Error(`MongoDB is required in production; refusing an in-memory fallback: ${err.message}`, { cause: err });
+      }
       logger.warning(`Could not connect to MongoDB daemon (${err.message}). Falling back to In-Memory repository.`);
       this.db = new InMemoryDb();
       this.isInMemory = true;

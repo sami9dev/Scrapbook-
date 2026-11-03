@@ -14,13 +14,30 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../../logging/logger.js';
 import { isHubCloudDriveUrl, fetchHubCloudMetadata } from '../../providers/hubcloud/validator.js';
+import { mediatorResolutionSemaphore } from '../../utils/concurrency.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SCRAPLING_PYTHON = process.env.SCRAPLING_PYTHON || (process.platform === 'win32' ? 'C:\\Users\\sk621\\AppData\\Roaming\\uv\\tools\\scrapling\\Scripts\\python.exe' : 'python3');
 const SCRAPLING_RESOLVER = path.join(__dirname, 'scrapling_resolver.py');
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms, signal) => new Promise((resolve, reject) => {
+  if (signal?.aborted) {
+    reject(signal.reason || new Error('Resolver request aborted'));
+    return;
+  }
+  const timer = setTimeout(done, ms);
+  function done() {
+    signal?.removeEventListener('abort', abort);
+    resolve();
+  }
+  function abort() {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+    reject(signal.reason || new Error('Resolver request aborted'));
+  }
+  signal?.addEventListener('abort', abort, { once: true });
+});
 
 /**
  * Normalizes any HubCloud drive URL to canonical https://hubcloud.ist/drive/...
@@ -50,6 +67,7 @@ export function canonicalHubCloudUrl(url) {
  * @param {boolean} [options.headless=false] - Run headless (default false for Turnstile compatibility)
  * @param {number} [options.timeoutMs=45000] - Total navigation timeout
  * @param {import('playwright').Browser} [options.existingBrowser] - Optional reused browser
+ * @param {AbortSignal} [options.signal] - Cancels child processes and browser work
  * @returns {Promise<{
  *   success: boolean,
  *   destination: string | null,
@@ -58,9 +76,18 @@ export function canonicalHubCloudUrl(url) {
  *   elapsedMs: number
  * }>}
  */
-export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
+async function resolveXDMoviesMediatorUnlocked(mediatorUrl, options = {}) {
   const startedAt = Date.now();
   const normalizedUrl = (mediatorUrl || '').trim();
+  const { signal } = options;
+  const cancelledResult = () => ({
+    success: false,
+    destination: null,
+    error: 'Resolution cancelled because the client request ended',
+    metadata: null,
+    elapsedMs: Date.now() - startedAt,
+  });
+  if (signal?.aborted) return cancelledResult();
 
   // If already a HubCloud URL, return canonical URL immediately
   if (isHubCloudDriveUrl(normalizedUrl)) {
@@ -92,11 +119,34 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
     try {
       logger.log('XDMovies', `[XDMovies Mediator] Resolving via Scrapling Stealth (Headless)...`);
       const scrapResult = await new Promise((resolve) => {
-        execFile(
+        let child;
+        const terminateProcessTree = () => {
+          if (!child?.pid) return;
+          if (process.platform === 'win32') {
+            execFile('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true }, () => {});
+            return;
+          }
+          try {
+            process.kill(-child.pid, 'SIGINT');
+          } catch {}
+          const forceKillTimer = setTimeout(() => {
+            try {
+              process.kill(-child.pid, 'SIGKILL');
+            } catch {}
+          }, 1000);
+          forceKillTimer.unref?.();
+        };
+        const onAbort = () => terminateProcessTree();
+
+        child = execFile(
           SCRAPLING_PYTHON,
           [SCRAPLING_RESOLVER, normalizedUrl],
-          { timeout: timeoutMs + 15000, windowsHide: true },
+          {
+            windowsHide: true,
+            detached: process.platform !== 'win32',
+          },
           (error, stdout, stderr) => {
+            signal?.removeEventListener('abort', onAbort);
             if (error) {
               resolve({ success: false, error: error.message });
               return;
@@ -110,7 +160,15 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
             }
           }
         );
+        child.once('error', (error) => {
+          if (error.killed || error.code === 'ETIMEDOUT') terminateProcessTree();
+        });
+        child.once('close', () => signal?.removeEventListener('abort', onAbort));
+        signal?.addEventListener('abort', onAbort, { once: true });
+        if (signal?.aborted) onAbort();
       });
+
+      if (signal?.aborted) return cancelledResult();
 
       if (scrapResult && scrapResult.isDead) {
         logger.log('XDMovies', `[XDMovies Mediator] Dead link detected early (${scrapResult.error}). Fast aborting without browser fallback.`);
@@ -139,9 +197,17 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
       }
       logger.log('XDMovies', `[XDMovies Mediator] Scrapling returned: ${scrapResult?.error || 'unsuccessful'}. Trying fallback...`);
     } catch (scrapErr) {
+      if (signal?.aborted) return cancelledResult();
       logger.log('XDMovies', `[XDMovies Mediator] Scrapling invocation error: ${scrapErr.message}. Trying fallback...`);
     }
   }
+
+  if (signal?.aborted) return cancelledResult();
+
+  const closeBrowserOnAbort = () => {
+    if (ownBrowser && browser) void browser.close().catch(() => {});
+  };
+  signal?.addEventListener('abort', closeBrowserOnAbort, { once: true });
 
   try {
     if (!browser) {
@@ -172,6 +238,7 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
       }
       ownBrowser = true;
     }
+    if (signal?.aborted) return cancelledResult();
 
     const context = await browser.newContext({
       viewport: { width: 1280, height: 900 },
@@ -287,7 +354,7 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
       await page.goto(normalizedUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
     } catch (navErr) {
       if (navErr.message.includes('ERR_ABORTED') || navErr.message.includes('detached')) {
-        await sleep(1200);
+        await sleep(1200, signal);
         await page.goto(normalizedUrl, { waitUntil: 'commit', timeout: timeoutMs }).catch(() => {});
       } else {
         throw navErr;
@@ -325,7 +392,7 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
       }
 
       await solveTurnstile();
-      await sleep(2000);
+      await sleep(2000, signal);
     }
 
     if (!reachedMediatorPage && !capturedDest && !isHubCloudDriveUrl(page.url())) {
@@ -353,7 +420,7 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
     try {
       const genBtn = await page.waitForSelector('#generateBtn', { timeout: 15000 });
       if (genBtn) {
-        await sleep(1000);
+        await sleep(1000, signal);
         await page.evaluate(() => {
           const btn = document.getElementById('generateBtn');
           if (btn) btn.click();
@@ -395,7 +462,7 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
       );
     } catch {
       if (!page.url().includes('step=2')) {
-        await sleep(2000);
+        await sleep(2000, signal);
       }
     }
     await page.bringToFront().catch(() => {});
@@ -406,7 +473,7 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
 
     // Buffer extra 8 seconds so the WebSocket heartbeat meets server-side duration requirement
     logger.log('XDMovies', '[XDMovies Mediator] Buffering server-side socket heartbeats...');
-    await sleep(8000);
+    await sleep(8000, signal);
 
     // Step 6: Wait for #goToLinkBtn to be enabled
     logger.log('XDMovies', '[XDMovies Mediator] Checking Turnstile solution and #goToLinkBtn readiness...');
@@ -428,7 +495,7 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
       }
 
       await solveTurnstile();
-      await sleep(1500);
+      await sleep(1500, signal);
     }
 
     if (!buttonReady) {
@@ -455,7 +522,7 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
         if (linkBtn) linkBtn.click();
       });
 
-      await sleep(3000);
+      await sleep(3000, signal);
 
       // Check if page already redirected to Hubcloud
       if (isHubCloudDriveUrl(page.url())) {
@@ -472,7 +539,7 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
           `[XDMovies Mediator] Server returned: "${completeApiResponse.error}". Retrying in 3s...`
         );
         await solveTurnstile();
-        await sleep(3000);
+        await sleep(3000, signal);
       }
     }
 
@@ -489,7 +556,7 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
         }
       }
       if (finalDestination) break;
-      await sleep(1000);
+      await sleep(1000, signal);
     }
 
     if (!finalDestination && isHubCloudDriveUrl(page.url())) {
@@ -526,6 +593,7 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
       elapsedMs: Date.now() - startedAt,
     };
   } catch (err) {
+    if (signal?.aborted) return cancelledResult();
     logger.error(`[XDMovies Mediator] Resolution failed: ${err.message}`);
     return {
       success: false,
@@ -535,9 +603,69 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
       elapsedMs: Date.now() - startedAt,
     };
   } finally {
+    signal?.removeEventListener('abort', closeBrowserOnAbort);
     if (ownBrowser && browser) {
       await browser.close().catch(() => {});
     }
+  }
+}
+
+export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
+  const queuedAt = Date.now();
+  const normalizedUrl = (mediatorUrl || '').trim();
+  if (isHubCloudDriveUrl(normalizedUrl)) {
+    return resolveXDMoviesMediatorUnlocked(mediatorUrl, options);
+  }
+
+  const parsedTimeoutSeconds = Number.parseInt(process.env.REQUEST_TIMEOUT_SECONDS || '90', 10);
+  const timeoutSeconds = Number.isFinite(parsedTimeoutSeconds) ? Math.max(1, parsedTimeoutSeconds) : 90;
+  const timeoutMs = timeoutSeconds * 1000;
+  const deadlineController = new AbortController();
+  const relayCallerAbort = () => deadlineController.abort(options.signal?.reason);
+  if (options.signal?.aborted) relayCallerAbort();
+  else options.signal?.addEventListener('abort', relayCallerAbort, { once: true });
+  const deadlineTimer = setTimeout(() => {
+    deadlineController.abort(new Error(`Resolution timed out after ${timeoutSeconds} seconds`));
+  }, timeoutMs);
+  deadlineTimer.unref?.();
+  const resolverOptions = { ...options, signal: deadlineController.signal };
+
+  let release;
+  try {
+    release = await mediatorResolutionSemaphore.acquire(deadlineController.signal);
+  } catch {
+    const timedOut = !options.signal?.aborted;
+    return {
+      success: false,
+      destination: null,
+      error: timedOut ? `Resolution timed out after ${timeoutSeconds} seconds` : 'Resolution cancelled before a worker became available',
+      metadata: null,
+      elapsedMs: Date.now() - queuedAt,
+    };
+  } finally {
+    if (!release) {
+      clearTimeout(deadlineTimer);
+      options.signal?.removeEventListener('abort', relayCallerAbort);
+    }
+  }
+
+  try {
+    const result = await resolveXDMoviesMediatorUnlocked(mediatorUrl, resolverOptions);
+    if (deadlineController.signal.aborted && !options.signal?.aborted) {
+      return {
+        success: false,
+        destination: null,
+        error: `Resolution timed out after ${timeoutSeconds} seconds`,
+        metadata: null,
+        elapsedMs: Date.now() - queuedAt,
+      };
+    }
+    result.elapsedMs = Date.now() - queuedAt;
+    return result;
+  } finally {
+    clearTimeout(deadlineTimer);
+    options.signal?.removeEventListener('abort', relayCallerAbort);
+    release();
   }
 }
 

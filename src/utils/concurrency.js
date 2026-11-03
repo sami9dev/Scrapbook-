@@ -1,3 +1,5 @@
+import { config } from '../config/config.js';
+
 /**
  * Bounded concurrency utilities for parallel mediator resolution.
  *
@@ -7,7 +9,7 @@
  *  - runBoundedWith():    same but shares a Playwright Browser across all workers
  *
  * Design constraints:
- *  - Concurrency limit is configurable (MEDIATOR_CONCURRENCY env var, default 4)
+ *  - Concurrency limit is configurable (MEDIATOR_CONCURRENCY env var, default 8)
  *  - One error in one task does NOT abort other tasks (error isolation)
  *  - Results are returned in the same order as input tasks
  *  - No shared cookies, auth, or session state between contexts
@@ -22,7 +24,7 @@ export class Semaphore {
    * @param {number} limit  Maximum number of concurrent permits
    */
   constructor(limit) {
-    this._limit = Math.max(1, limit);
+    this._limit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 1;
     this._active = 0;
     this._queue = [];
   }
@@ -30,27 +32,71 @@ export class Semaphore {
   /**
    * Acquire a permit. Resolves immediately if under the limit,
    * otherwise queues until a permit is released.
+   * @param {AbortSignal} [signal]  Abort queued acquisition if the caller disconnects
    * @returns {Promise<() => void>}  A release function — call it when done
    */
-  acquire() {
-    return new Promise((resolve) => {
-      const tryAcquire = () => {
+  acquire(signal) {
+    return new Promise((resolve, reject) => {
+      const ticket = {
+        queued: false,
+        settled: false,
+        grant: null,
+      };
+      const cleanup = () => signal?.removeEventListener('abort', onAbort);
+      const rejectAborted = () => {
+        if (ticket.settled) return;
+        ticket.settled = true;
+        if (ticket.queued) {
+          const index = this._queue.indexOf(ticket);
+          if (index !== -1) this._queue.splice(index, 1);
+          ticket.queued = false;
+        }
+        cleanup();
+        reject(signal?.reason || new Error('Semaphore acquisition aborted'));
+      };
+      const onAbort = () => rejectAborted();
+
+      ticket.grant = () => {
+        if (ticket.settled) return false;
+        if (signal?.aborted) {
+          rejectAborted();
+          return false;
+        }
         if (this._active < this._limit) {
+          ticket.settled = true;
           this._active++;
-          resolve(() => this._release());
+          cleanup();
+          let released = false;
+          resolve(() => {
+            if (released) return;
+            released = true;
+            this._release();
+          });
+          return true;
         } else {
-          this._queue.push(tryAcquire);
+          if (!ticket.queued) {
+            ticket.queued = true;
+            this._queue.push(ticket);
+          }
+          return false;
         }
       };
-      tryAcquire();
+
+      if (signal?.aborted) {
+        rejectAborted();
+        return;
+      }
+      signal?.addEventListener('abort', onAbort, { once: true });
+      ticket.grant();
     });
   }
 
   _release() {
-    this._active--;
-    if (this._queue.length > 0) {
+    this._active = Math.max(0, this._active - 1);
+    while (this._queue.length > 0) {
       const next = this._queue.shift();
-      next();
+      next.queued = false;
+      if (next.grant()) break;
     }
   }
 
@@ -58,6 +104,11 @@ export class Semaphore {
   get queued() { return this._queue.length; }
   get limit()  { return this._limit; }
 }
+
+// One process-wide budget shared by Telegram resolution, API routes and
+// background browser batches. This prevents concurrent jobs from each
+// launching their own Chromium instance on small Render plans.
+export const mediatorResolutionSemaphore = new Semaphore(config.mediatorConcurrency);
 
 /**
  * Runs an array of async task factories with bounded concurrency.
@@ -105,6 +156,7 @@ export async function runBounded(tasks, limit) {
  * @param {object}   [options]
  * @param {boolean}  [options.headless]         Passed to chromium.launch()
  * @param {import('playwright').Browser} [options.existingBrowser]  Reuse an existing browser
+ * @param {AbortSignal} [options.signal]        Cancels waiting for the process-wide permit
  * @returns {Promise<{ results: Array<T | Error>, timings: object }>}
  */
 export async function runBoundedWithBrowser(tasks, limit, options = {}) {
@@ -114,24 +166,23 @@ export async function runBoundedWithBrowser(tasks, limit, options = {}) {
 
   const headless = options.headless !== undefined ? options.headless : true;
   const totalStart = Date.now();
-
-  const { chromium } = await import('playwright');
-
   let browser = options.existingBrowser || null;
   let ownBrowser = false;
   let browserStartMs = 0;
-
-  if (!browser) {
-    const launchStart = Date.now();
-    browser = await chromium.launch({
-      headless,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
-    browserStartMs = Date.now() - launchStart;
-    ownBrowser = true; // we launched it, we close it in finally
-  }
+  const releaseGlobal = await mediatorResolutionSemaphore.acquire(options.signal);
 
   try {
+    const { chromium } = await import('playwright');
+    if (!browser) {
+      const launchStart = Date.now();
+      browser = await chromium.launch({
+        headless,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      });
+      browserStartMs = Date.now() - launchStart;
+      ownBrowser = true; // we launched it, we close it in finally
+    }
+
     const semaphore = new Semaphore(limit);
     const results = new Array(tasks.length);
 
@@ -159,5 +210,6 @@ export async function runBoundedWithBrowser(tasks, limit, options = {}) {
     if (ownBrowser && browser) {
       await browser.close().catch(() => {});
     }
+    releaseGlobal();
   }
 }

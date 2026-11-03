@@ -24,6 +24,7 @@ const (
 	DeadLinkSentinel = "__DEAD_LINK__"
 	DeadLinkTTL      = 15 * time.Minute
 	ValidLinkTTL     = 24 * time.Hour
+	maxL1Entries     = 2048
 )
 
 var ErrDeadLink = errors.New("link is dead or token not found (404)")
@@ -49,6 +50,8 @@ type MongoLinkDoc struct {
 
 type MultiTierCache struct {
 	l1Memory     sync.Map // L1: < 0.01ms in-memory cache
+	l1Mu         sync.Mutex
+	l1Count      int
 	l2Redis      *redis.Client
 	l2RESTURL    string
 	l2RESTToken  string
@@ -57,6 +60,37 @@ type MultiTierCache struct {
 	hits         uint64
 	misses       uint64
 	deadHits     uint64
+}
+
+// storeL1 bounds process-local cache growth. The shared Redis cache remains the
+// source for entries evicted from this fast, per-process tier.
+func (c *MultiTierCache) storeL1(key string, value interface{}) {
+	c.l1Mu.Lock()
+	defer c.l1Mu.Unlock()
+
+	if _, exists := c.l1Memory.Load(key); !exists {
+		if c.l1Count >= maxL1Entries {
+			c.l1Memory.Range(func(evictKey, _ interface{}) bool {
+				if evictKey == key {
+					return true
+				}
+				c.l1Memory.Delete(evictKey)
+				c.l1Count--
+				return false
+			})
+		}
+		c.l1Count++
+	}
+	c.l1Memory.Store(key, value)
+}
+
+func (c *MultiTierCache) deleteL1(key string, expected interface{}) {
+	c.l1Mu.Lock()
+	defer c.l1Mu.Unlock()
+	if current, exists := c.l1Memory.Load(key); exists && current == expected {
+		c.l1Memory.Delete(key)
+		c.l1Count--
+	}
 }
 
 // MemoryCache alias for seamless backward compatibility
@@ -182,13 +216,13 @@ func (c *MultiTierCache) Get(ctx context.Context, rawURL string) (string, bool, 
 					atomic.AddUint64(&c.deadHits, 1)
 					return "", true, ErrDeadLink
 				}
-				c.l1Memory.Delete(rawURL)
+				c.deleteL1(rawURL, val)
 			} else {
 				if item.ExpiresAt.IsZero() || time.Now().Before(item.ExpiresAt) {
 					atomic.AddUint64(&c.hits, 1)
 					return item.Destination, true, nil
 				}
-				c.l1Memory.Delete(rawURL)
+				c.deleteL1(rawURL, val)
 			}
 		} else if strVal, isStr := val.(string); isStr {
 			if strVal == DeadLinkSentinel {
@@ -210,7 +244,7 @@ func (c *MultiTierCache) Get(ctx context.Context, rawURL string) (string, bool, 
 			if redisVal == DeadLinkSentinel {
 				ttl = DeadLinkTTL
 			}
-			c.l1Memory.Store(rawURL, Item{
+			c.storeL1(rawURL, Item{
 				Destination: redisVal,
 				CreatedAt:   time.Now(),
 				ExpiresAt:   time.Now().Add(ttl),
@@ -243,7 +277,7 @@ func (c *MultiTierCache) Get(ctx context.Context, rawURL string) (string, bool, 
 		}
 		if err == nil && resolved != "" {
 			// Backfill L1 and L2 asynchronously so the current request returns immediately
-			c.l1Memory.Store(rawURL, Item{
+			c.storeL1(rawURL, Item{
 				Destination: resolved,
 				Title:       doc.Title,
 				CreatedAt:   time.Now(),
@@ -270,7 +304,7 @@ func (c *MultiTierCache) SetValid(ctx context.Context, rawURL, resolvedURL strin
 	if rawURL == "" || resolvedURL == "" {
 		return
 	}
-	c.l1Memory.Store(rawURL, Item{
+	c.storeL1(rawURL, Item{
 		Destination: resolvedURL,
 		CreatedAt:   time.Now(),
 		ExpiresAt:   time.Now().Add(ValidLinkTTL),
@@ -314,7 +348,7 @@ func (c *MultiTierCache) SetDead(rawURL string) {
 	if rawURL == "" {
 		return
 	}
-	c.l1Memory.Store(rawURL, Item{
+	c.storeL1(rawURL, Item{
 		Destination: DeadLinkSentinel,
 		CreatedAt:   time.Now(),
 		ExpiresAt:   time.Now().Add(DeadLinkTTL),

@@ -60,9 +60,13 @@ type Resolver struct {
 	baseAPI       string
 	rustWorkerURL string
 	botToken      string
+	timeout       time.Duration
 }
 
 func New(c *cache.MemoryCache, localResolverAPI string, rustWorkerURL string, botToken string, timeout time.Duration) *Resolver {
+	if timeout <= 0 {
+		timeout = 90 * time.Second
+	}
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -77,7 +81,9 @@ func New(c *cache.MemoryCache, localResolverAPI string, rustWorkerURL string, bo
 
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   timeout,
+		// Request contexts own the actual deadline. Keep the client-level guard
+		// slightly longer so it cannot cut off work and trigger a duplicate solve.
+		Timeout: timeout + 5*time.Second,
 	}
 
 	baseAPI := "http://localhost:3000"
@@ -92,7 +98,13 @@ func New(c *cache.MemoryCache, localResolverAPI string, rustWorkerURL string, bo
 		baseAPI:       baseAPI,
 		rustWorkerURL: strings.TrimRight(rustWorkerURL, "/"),
 		botToken:      botToken,
+		timeout:       timeout,
 	}
+}
+
+// Timeout returns the configured upper bound for a single uncached resolution.
+func (r *Resolver) Timeout() time.Duration {
+	return r.timeout
 }
 
 // IsContentPage returns true if the URL is a series or movie landing page rather than a download mediator
@@ -364,23 +376,22 @@ func (r *Resolver) resolveAfterCacheMiss(ctx context.Context, rawURL string, sta
 		}
 	}
 
-	if err != nil {
-		// Auto-retry once after a short 2-second pause only if NOT a dead link
-		log.Printf("[Resolver] First attempt failed for %s (%v). Auto-retrying once...", rawURL, err)
-		time.Sleep(2 * time.Second)
-		dest, title, err = r.resolveViaBackend(ctx, rawURL)
-		if errors.Is(err, cache.ErrDeadLink) {
-			r.cache.SetDead(rawURL)
-			return Result{
-				SourceURL: rawURL,
-				Duration:  time.Since(start),
-				Err:       cache.ErrDeadLink,
-				IsDead:    true,
-			}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return Result{
+			SourceURL: rawURL,
+			Duration:  time.Since(start),
+			Err:       ctxErr,
 		}
 	}
 	if err != nil {
 		dest, err = r.resolveDirectRedirects(ctx, rawURL)
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return Result{
+			SourceURL: rawURL,
+			Duration:  time.Since(start),
+			Err:       ctxErr,
+		}
 	}
 
 	if title == "" {

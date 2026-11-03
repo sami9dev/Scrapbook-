@@ -4,7 +4,7 @@ import { jobQueue } from '../queue/job-queue.js';
 import { jobsRepo, scrapedLinksRepo } from '../database/models.js';
 import { logger } from '../logging/logger.js';
 import { matchesQuality } from '../utils/normalize.js';
-import { runBoundedWithBrowser } from '../utils/concurrency.js';
+import { mediatorResolutionSemaphore, runBoundedWithBrowser } from '../utils/concurrency.js';
 import { config } from '../config/config.js';
 
 const router = express.Router();
@@ -1177,6 +1177,14 @@ router.post('/parse-html', async (req, res) => {
  * Resolves an individual mediator link (or HubCloud link) via Playwright browser flow.
  */
 router.post('/resolve-link', async (req, res) => {
+  const resolverAbort = new AbortController();
+  let releaseResolverSlot = null;
+  res.once('close', () => {
+    if (!res.writableEnded) {
+      resolverAbort.abort(new Error('Resolver client disconnected'));
+    }
+  });
+  const { signal } = resolverAbort;
   const { id, mediatorUrl } = req.body;
   try {
     let link = null;
@@ -1215,7 +1223,7 @@ router.post('/resolve-link', async (req, res) => {
     let resolution;
     if (isXDMoviesMed) {
       const { resolveXDMoviesMediator } = await import('../scrapers/xdmovies/mediator.js');
-      const medRes = await resolveXDMoviesMediator(urlToResolve);
+      const medRes = await resolveXDMoviesMediator(urlToResolve, { signal });
       resolution = {
         success: medRes.success,
         destination: medRes.destination,
@@ -1226,12 +1234,15 @@ router.post('/resolve-link', async (req, res) => {
       };
     } else {
       const { resolveMediatorHttpFirst } = await import('../resolvers/mediator/http-first.js');
+      releaseResolverSlot = await mediatorResolutionSemaphore.acquire(signal);
+      if (signal.aborted || res.destroyed) return;
       resolution = await resolveMediatorHttpFirst(urlToResolve, {
         meta: link || {},
         countdownTimeout: 35000,
         navigationTimeout: 20000,
       });
     }
+    if (signal.aborted || res.destroyed) return;
 
     if (resolution.success && resolution.destination) {
       let finalTitle = resolution.meta?.filename || resolution.meta?.title;
@@ -1241,6 +1252,7 @@ router.post('/resolve-link', async (req, res) => {
           finalTitle = hubMeta.filename;
         }
       }
+      if (signal.aborted || res.destroyed) return;
 
       if (link) {
         link.providerUrl = resolution.destination;
@@ -1289,8 +1301,11 @@ router.post('/resolve-link', async (req, res) => {
       });
     }
   } catch (err) {
+    if (signal.aborted || res.destroyed) return;
     logger.error(`Error resolving link: ${err.message}`);
     return res.status(500).json({ error: err.message });
+  } finally {
+    releaseResolverSlot?.();
   }
 });
 

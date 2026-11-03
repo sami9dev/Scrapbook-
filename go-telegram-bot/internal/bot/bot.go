@@ -24,11 +24,12 @@ import (
 var urlRegex = regexp.MustCompile(`https?://[^\s/$.?#].[^\s]*`)
 
 type Bot struct {
-	teleBot   *tele.Bot
-	pool      *pool.WorkerPool
-	resolver  *resolver.Resolver
-	cache     *cache.MemoryCache
-	startTime time.Time
+	teleBot     *tele.Bot
+	pool        *pool.WorkerPool
+	resolver    *resolver.Resolver
+	cache       *cache.MemoryCache
+	resolveSlot chan struct{}
+	startTime   time.Time
 }
 
 func New(token string, p *pool.WorkerPool, r *resolver.Resolver, c *cache.MemoryCache) (*Bot, error) {
@@ -43,11 +44,12 @@ func New(token string, p *pool.WorkerPool, r *resolver.Resolver, c *cache.Memory
 	}
 
 	instance := &Bot{
-		teleBot:   b,
-		pool:      p,
-		resolver:  r,
-		cache:     c,
-		startTime: time.Now(),
+		teleBot:     b,
+		pool:        p,
+		resolver:    r,
+		cache:       c,
+		resolveSlot: make(chan struct{}, p.WorkerCount()),
+		startTime:   time.Now(),
 	}
 
 	instance.registerHandlers()
@@ -511,11 +513,10 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 	var cacheHits int32
 	var wg sync.WaitGroup
 
-	workerSlots := b.pool.WorkerCount()
+	workerSlots := cap(b.resolveSlot)
 	if workerSlots <= 0 {
 		workerSlots = 1
 	}
-	semaphore := make(chan struct{}, workerSlots)
 
 	// Throttled Telegram Progress Updater (every 2.5 - 3 seconds to respect rate limits)
 	doneChan := make(chan struct{})
@@ -579,12 +580,16 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 			}
 
 			// 2. Acquire bounded worker slot
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
+			b.resolveSlot <- struct{}{}
+			defer func() { <-b.resolveSlot }()
 
 			// Start the resolver deadline after acquiring a slot so queue wait does
 			// not consume the time available for the actual resolution.
-			ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+			resolveTimeout := b.resolver.Timeout()
+			if resolveTimeout <= 0 {
+				resolveTimeout = 90 * time.Second
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), resolveTimeout)
 			defer cancel()
 
 			// 3. Re-check cache in case duplicate finished while waiting

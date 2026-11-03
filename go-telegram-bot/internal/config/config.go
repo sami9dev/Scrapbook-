@@ -43,7 +43,7 @@ func Load() *Config {
 	if rustWorkerURL == "" {
 		rustWorkerURL = os.Getenv("RUST_SERVICE_URL")
 	}
-	timeoutSec := getEnvInt("REQUEST_TIMEOUT_SECONDS", 150)
+	timeoutSec := getEnvInt("REQUEST_TIMEOUT_SECONDS", 90)
 
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {

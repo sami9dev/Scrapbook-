@@ -16,11 +16,12 @@ export const config = {
   concurrency: parseInt(process.env.CONCURRENCY || '3', 10),
   backoffDelays: [1000, 2000, 4000],
 
-  // Bounded concurrency for mediator resolution workers.
-  // Each worker uses one Playwright browser context inside a shared browser instance.
-  // Default is 8 workers (optimal scaling baseline).
-  // Set MEDIATOR_CONCURRENCY=1 in .env to restore original sequential behaviour.
-  mediatorConcurrency: parseInt(process.env.MEDIATOR_CONCURRENCY || '8', 10),
+  // Browser work is process-wide bounded. Keep production at one worker by
+  // default for small Render instances; local development can use more.
+  mediatorConcurrency: parseInt(
+    process.env.MEDIATOR_CONCURRENCY || (process.env.NODE_ENV === 'production' ? '1' : '8'),
+    10,
+  ),
 
   // Identity
   userAgent: process.env.USER_AGENT || 'AuthorizedMetadataScraper/1.0',
