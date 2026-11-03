@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-venv \
     curl \
+    tini \
     ca-certificates \
     fonts-liberation \
     libnss3 \
@@ -67,4 +68,5 @@ ENV SCRAPLING_BIN=scrapling
 
 EXPOSE 10000
 
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/app/start.sh"]

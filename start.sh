@@ -2,6 +2,7 @@
 set -e
 
 export PLAYWRIGHT_BROWSERS_PATH=0
+export NODE_OPTIONS="--max-old-space-size=192"
 APP_PORT="${PORT:-10000}"
 
 echo "=================================================="

@@ -17,7 +17,7 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: WORKER_CONCURRENCY
-        value: "2"
+        value: "1"
       - key: RESOLVER_LOCAL_API
         value: "http://127.0.0.1:10000/api/resolve-link"
       - key: LOCAL_RESOLVER_API

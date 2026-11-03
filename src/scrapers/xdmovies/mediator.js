@@ -152,6 +152,14 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
         '--disable-gpu',
         '--disable-blink-features=AutomationControlled',
         '--enable-blink-features=FakeShadowRoot',
+        '--renderer-process-limit=1',
+        '--js-flags=--max-old-space-size=128',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--mute-audio',
+        '--no-zygote',
       ];
       try {
         browser = await chromium.launch({

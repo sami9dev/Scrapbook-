@@ -513,7 +513,7 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 
 	workerSlots := b.pool.WorkerCount()
 	if workerSlots <= 0 {
-		workerSlots = 4
+		workerSlots = 1
 	}
 	semaphore := make(chan struct{}, workerSlots)
 
