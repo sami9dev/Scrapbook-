@@ -1,3 +1,13 @@
+---
+title: Linkscrap Bot
+emoji: ⚡
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Authorized Link-Discovery & Metadata Scraper
 
 A production-quality, modular scraper for authorized websites (sites you own or have explicit permission to scrape). The application discovers publicly exposed download/provider links, follows ordinary redirects and navigation, extracts structured metadata, normalizes file sizes, records mirror links, prevents duplicates, and stores records in MongoDB with a real-time dark admin dashboard.

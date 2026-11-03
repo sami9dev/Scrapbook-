@@ -57,15 +57,17 @@ COPY . .
 
 # Copy compiled Go bot binary from builder stage
 COPY --from=go-builder /build/bot /app/go-telegram-bot/bot
+RUN chmod -R 777 /app
 RUN chmod +x /app/go-telegram-bot/bot /app/start.sh
 
 # Environment settings
 ENV NODE_ENV=production
-ENV PORT=10000
+ENV PORT=7860
 ENV SCRAPER_DIR=/app
 ENV SCRAPLING_PYTHON=python3
 ENV SCRAPLING_BIN=scrapling
 
+EXPOSE 7860
 EXPOSE 10000
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
