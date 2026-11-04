@@ -686,7 +686,14 @@
           const res = await fetch(`${API_BASE}/api/links?mediatorUrl=${encodeURIComponent(query)}`);
           if (res.ok) {
             const data = await res.json();
-            matched = (data || []).filter(item => item.providerUrl && item.providerUrl.includes('hubcloud'));
+            const qNorm = query.toLowerCase().replace(/\/+$/, '');
+            const slug = qNorm.split('/').pop().replace(/-download-\d+$/i, '');
+            matched = (data || []).filter(item => {
+              if (!item.providerUrl || !item.providerUrl.includes('hubcloud')) return false;
+              const src = (item.sourceUrl || '').toLowerCase();
+              const t = (item.title || item.filename || '').toLowerCase();
+              return src.includes(qNorm) || (slug && (src.includes(slug) || t.includes(slug)));
+            });
           }
 
           if (matched.length === 0) {
@@ -743,7 +750,14 @@
           const res = await fetch(`${API_BASE}/api/links?titleSearch=${encodeURIComponent(query)}`);
           if (res.ok) {
             const data = await res.json();
-            matched = (data || []).filter(item => item.providerUrl && item.providerUrl.includes('hubcloud'));
+            const qLower = query.toLowerCase();
+            matched = (data || []).filter(item => {
+              if (!item.providerUrl || !item.providerUrl.includes('hubcloud')) return false;
+              const t = (item.title || item.filename || '').toLowerCase();
+              const src = (item.sourceUrl || '').toLowerCase();
+              const words = qLower.split(/\s+/).filter(w => w.length > 2);
+              return t.includes(qLower) || src.includes(qLower) || (words.length > 0 && words.every(w => t.includes(w) || src.includes(w)));
+            });
           }
         }
 
