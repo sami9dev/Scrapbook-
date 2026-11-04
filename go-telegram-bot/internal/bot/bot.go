@@ -285,27 +285,73 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 	}
 
 	// Case B: TV Series
-	// 1. Group Season Packs by Season Number
-	packsBySeason := make(map[int][]resolver.StoredLink)
+	type qualitySection struct {
+		Category string
+		Rank     int
+		Packs    []resolver.StoredLink
+		Episodes []resolver.StoredLink
+	}
+
+	type seasonGroup struct {
+		Season      int
+		Qualities   map[string]*qualitySection
+		QualityKeys []string
+	}
+
+	seasonsMap := make(map[int]*seasonGroup)
+	var seasonsList []int
+
+	getOrCreateSeason := func(s int) *seasonGroup {
+		if s <= 0 {
+			s = 1
+		}
+		if seasonsMap[s] == nil {
+			seasonsMap[s] = &seasonGroup{
+				Season:    s,
+				Qualities: make(map[string]*qualitySection),
+			}
+			seasonsList = append(seasonsList, s)
+		}
+		return seasonsMap[s]
+	}
+
+	getOrCreateQuality := func(sg *seasonGroup, filename, quality string) *qualitySection {
+		cat, rank := getReleaseCategory(filename, quality)
+		if sg.Qualities[cat] == nil {
+			sg.Qualities[cat] = &qualitySection{
+				Category: cat,
+				Rank:     rank,
+			}
+			sg.QualityKeys = append(sg.QualityKeys, cat)
+		}
+		return sg.Qualities[cat]
+	}
+
+	// 1. Add all Season Packs
 	for _, p := range series.Packs {
 		dest := p.ProviderURL
 		if !strings.Contains(dest, "hubcloud") {
 			continue
 		}
-		s := p.Season
-		if s <= 0 {
-			s = 1
+		sg := getOrCreateSeason(p.Season)
+		qs := getOrCreateQuality(sg, p.Filename, p.Quality)
+		qs.Packs = append(qs.Packs, p)
+	}
+
+	// 2. Add all Episodes
+	for _, ep := range series.Episodes {
+		dest := ep.ProviderURL
+		if !strings.Contains(dest, "hubcloud") {
+			continue
 		}
-		packsBySeason[s] = append(packsBySeason[s], p)
+		sg := getOrCreateSeason(ep.Season)
+		qs := getOrCreateQuality(sg, ep.Filename, ep.Quality)
+		qs.Episodes = append(qs.Episodes, ep)
 	}
 
-	var packSeasons []int
-	for s := range packsBySeason {
-		packSeasons = append(packSeasons, s)
-	}
-	sort.Ints(packSeasons)
+	sort.Ints(seasonsList)
 
-	// --- MESSAGE 1: Series Overview & Season Complete Packs ---
+	// Format Header / Overview
 	var sbOverview strings.Builder
 	sbOverview.WriteString(fmt.Sprintf("🔥 <b>%s</b>\n", html.EscapeString(series.Title)))
 	sbOverview.WriteString(fmt.Sprintf("⚡ <i>Retrieved in %s</i>\n", formatDuration(duration)))
@@ -313,106 +359,45 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 		series.Total, len(series.Packs), len(series.Episodes)))
 	sbOverview.WriteString("━━━━━━━━━━━━━━━━━━━━━━\n\n")
 
-	if len(packSeasons) > 0 {
-		for _, s := range packSeasons {
-			packs := packsBySeason[s]
-			sort.Slice(packs, func(i, j int) bool {
-				_, r1 := getReleaseCategory(packs[i].Filename, packs[i].Quality)
-				_, r2 := getReleaseCategory(packs[j].Filename, packs[j].Quality)
-				return r1 > r2
-			})
+	// Build blocks per Season -> Quality -> Zip -> Episodes
+	var msgBlocks []string
+	for _, s := range seasonsList {
+		sg := seasonsMap[s]
+		sort.Slice(sg.QualityKeys, func(i, j int) bool {
+			return sg.Qualities[sg.QualityKeys[i]].Rank > sg.Qualities[sg.QualityKeys[j]].Rank
+		})
 
-			sbOverview.WriteString(fmt.Sprintf("📦 <b>Season %d Packs/Zips:</b>\n", s))
-			for _, p := range packs {
-				name := p.Filename
-				if name == "" {
-					name = p.Title
+		for _, qKey := range sg.QualityKeys {
+			qs := sg.Qualities[qKey]
+			var qSB strings.Builder
+			qSB.WriteString(fmt.Sprintf("📺 <b>════ SEASON %d • %s ════</b>\n\n", s, qs.Category))
+
+			// Zip / Pack first!
+			if len(qs.Packs) > 0 {
+				qSB.WriteString("📦 <b>Complete Season Pack:</b>\n")
+				for _, p := range qs.Packs {
+					name := p.Filename
+					if name == "" {
+						name = p.Title
+					}
+					dest := p.ProviderURL
+					sizeStr := p.SizeDisplay
+					sizeLine := ""
+					if sizeStr != "" {
+						sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
+					}
+					qSB.WriteString(fmt.Sprintf("📁 <code>%s</code>\n%s   └ ⚡ <b>HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
+						html.EscapeString(name), sizeLine, dest, dest))
 				}
-				dest := p.ProviderURL
-				sizeStr := p.SizeDisplay
-				sizeLine := ""
-				if sizeStr != "" {
-					sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
-				}
-				sbOverview.WriteString(fmt.Sprintf("📁 <code>%s</code>\n%s   └ ⚡ <b>HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
-					html.EscapeString(name), sizeLine, dest, dest))
 			}
-		}
-	} else {
-		sbOverview.WriteString("ℹ️ <i>No season zip packs available. Individual episodes categorized below:</i>\n\n")
-	}
 
-	// Send/Edit overview message
-	if statusMsg != nil {
-		if _, err := b.teleBot.Edit(statusMsg, sbOverview.String(), tele.ModeHTML); err != nil {
-			_, _ = b.teleBot.Send(c.Recipient(), sbOverview.String(), tele.ModeHTML)
-		}
-	} else {
-		_, _ = b.teleBot.Send(c.Recipient(), sbOverview.String(), tele.ModeHTML)
-	}
-
-	// --- MESSAGE 2+: Individual Episodes Grouped by Season & Quality/Codec Category ---
-	if len(series.Episodes) > 0 {
-		type epCategoryGroup struct {
-			Category string
-			Rank     int
-			Episodes []resolver.StoredLink
-		}
-		type seasonGroup struct {
-			Season     int
-			Categories map[string]*epCategoryGroup
-			CatKeys    []string
-		}
-
-		seasonsMap := make(map[int]*seasonGroup)
-		var epSeasons []int
-
-		for _, ep := range series.Episodes {
-			dest := ep.ProviderURL
-			if !strings.Contains(dest, "hubcloud") {
-				continue
-			}
-			s := ep.Season
-			if s <= 0 {
-				s = 1
-			}
-			if seasonsMap[s] == nil {
-				seasonsMap[s] = &seasonGroup{
-					Season:     s,
-					Categories: make(map[string]*epCategoryGroup),
-				}
-				epSeasons = append(epSeasons, s)
-			}
-			sg := seasonsMap[s]
-			cat, rank := getReleaseCategory(ep.Filename, ep.Quality)
-			if sg.Categories[cat] == nil {
-				sg.Categories[cat] = &epCategoryGroup{
-					Category: cat,
-					Rank:     rank,
-				}
-				sg.CatKeys = append(sg.CatKeys, cat)
-			}
-			sg.Categories[cat].Episodes = append(sg.Categories[cat].Episodes, ep)
-		}
-
-		sort.Ints(epSeasons)
-
-		var msgBlocks []string
-		for _, s := range epSeasons {
-			sg := seasonsMap[s]
-			sort.Slice(sg.CatKeys, func(i, j int) bool {
-				return sg.Categories[sg.CatKeys[i]].Rank > sg.Categories[sg.CatKeys[j]].Rank
-			})
-
-			for _, cat := range sg.CatKeys {
-				cg := sg.Categories[cat]
-				sort.Slice(cg.Episodes, func(i, j int) bool {
-					return cg.Episodes[i].Episode < cg.Episodes[j].Episode
+			// Individual episodes for this quality right below the zip!
+			if len(qs.Episodes) > 0 {
+				sort.Slice(qs.Episodes, func(i, j int) bool {
+					return qs.Episodes[i].Episode < qs.Episodes[j].Episode
 				})
-
-				var blockSB strings.Builder
-				blockSB.WriteString(fmt.Sprintf("🎬 <b>Season %d Episodes — %s:</b>\n", s, cg.Category))
-				for _, ep := range cg.Episodes {
+				qSB.WriteString("🎞️ <b>Episodes:</b>\n")
+				for _, ep := range qs.Episodes {
 					name := ep.Filename
 					if name == "" {
 						name = ep.Title
@@ -423,25 +408,36 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 					if sizeStr != "" {
 						sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
 					}
-					blockSB.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
+					qSB.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
 						html.EscapeString(name), sizeLine, dest, dest))
 				}
-				msgBlocks = append(msgBlocks, blockSB.String())
 			}
-		}
 
-		if len(msgBlocks) > 0 {
-			var currentMsg strings.Builder
-			for _, block := range msgBlocks {
-				if currentMsg.Len()+len(block) > 3200 && currentMsg.Len() > 0 {
-					_, _ = b.teleBot.Send(c.Recipient(), currentMsg.String(), tele.ModeHTML)
-					currentMsg.Reset()
-				}
-				currentMsg.WriteString(block)
-			}
-			if currentMsg.Len() > 0 {
+			msgBlocks = append(msgBlocks, qSB.String())
+		}
+	}
+
+	// Send / Edit Overview
+	if statusMsg != nil {
+		if _, err := b.teleBot.Edit(statusMsg, sbOverview.String(), tele.ModeHTML); err != nil {
+			_, _ = b.teleBot.Send(c.Recipient(), sbOverview.String(), tele.ModeHTML)
+		}
+	} else {
+		_, _ = b.teleBot.Send(c.Recipient(), sbOverview.String(), tele.ModeHTML)
+	}
+
+	// Dispatch chunked messages (< 3200 chars per message)
+	if len(msgBlocks) > 0 {
+		var currentMsg strings.Builder
+		for _, block := range msgBlocks {
+			if currentMsg.Len()+len(block) > 3200 && currentMsg.Len() > 0 {
 				_, _ = b.teleBot.Send(c.Recipient(), currentMsg.String(), tele.ModeHTML)
+				currentMsg.Reset()
 			}
+			currentMsg.WriteString(block)
+		}
+		if currentMsg.Len() > 0 {
+			_, _ = b.teleBot.Send(c.Recipient(), currentMsg.String(), tele.ModeHTML)
 		}
 	}
 
@@ -729,9 +725,46 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 		HasMeta bool
 	}
 
-	var packs []resolvedMetaItem
-	var episodes []resolvedMetaItem
+	type batchQualitySection struct {
+		Category string
+		Rank     int
+		Packs    []resolvedMetaItem
+		Episodes []resolvedMetaItem
+	}
+	type batchSeasonGroup struct {
+		Season      int
+		Qualities   map[string]*batchQualitySection
+		QualityKeys []string
+	}
+	bSeasonsMap := make(map[int]*batchSeasonGroup)
+	var bSeasonsList []int
 	var others []resolvedMetaItem
+
+	getOrCreateBatchSeason := func(s int) *batchSeasonGroup {
+		if s <= 0 {
+			s = 1
+		}
+		if bSeasonsMap[s] == nil {
+			bSeasonsMap[s] = &batchSeasonGroup{
+				Season:    s,
+				Qualities: make(map[string]*batchQualitySection),
+			}
+			bSeasonsList = append(bSeasonsList, s)
+		}
+		return bSeasonsMap[s]
+	}
+
+	getOrCreateBatchQuality := func(bsg *batchSeasonGroup, filename, quality string) *batchQualitySection {
+		cat, rank := getReleaseCategory(filename, quality)
+		if bsg.Qualities[cat] == nil {
+			bsg.Qualities[cat] = &batchQualitySection{
+				Category: cat,
+				Rank:     rank,
+			}
+			bsg.QualityKeys = append(bsg.QualityKeys, cat)
+		}
+		return bsg.Qualities[cat]
+	}
 
 	for _, res := range results {
 		it := resolvedMetaItem{Result: res}
@@ -744,89 +777,58 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 
 		if !it.HasMeta || it.Result.Err != nil || !strings.Contains(it.Result.Destination, "hubcloud") {
 			others = append(others, it)
-		} else if it.Item.Scope == "pack" || strings.HasSuffix(strings.ToLower(it.Item.Filename), ".zip") {
-			packs = append(packs, it)
 		} else {
-			episodes = append(episodes, it)
+			isPack := it.Item.Scope == "pack" || it.Item.Type == "pack" || strings.HasSuffix(strings.ToLower(it.Item.Filename), ".zip")
+			bsg := getOrCreateBatchSeason(it.Item.Season)
+			bqs := getOrCreateBatchQuality(bsg, it.Item.Filename, it.Item.Quality)
+			if isPack {
+				bqs.Packs = append(bqs.Packs, it)
+			} else {
+				bqs.Episodes = append(bqs.Episodes, it)
+			}
 		}
 	}
 
 	var msgBlocks []string
+	sort.Ints(bSeasonsList)
 
-	// Section 1: Season Packs
-	if len(packs) > 0 {
-		var pSB strings.Builder
-		pSB.WriteString("📦 <b>Season Packs / Zips:</b>\n")
-		for _, p := range packs {
-			name := p.Item.Filename
-			if name == "" {
-				name = p.Item.Title
-			}
-			dest := p.Result.Destination
-			sizeStr := p.Item.SizeDisplay
-			sizeLine := ""
-			if sizeStr != "" {
-				sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
-			}
-			pSB.WriteString(fmt.Sprintf("📁 <code>%s</code>\n%s   └ ⚡ <b>HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
-				html.EscapeString(name), sizeLine, dest, dest))
-		}
-		msgBlocks = append(msgBlocks, pSB.String())
-	}
+	for _, s := range bSeasonsList {
+		bsg := bSeasonsMap[s]
+		sort.Slice(bsg.QualityKeys, func(i, j int) bool {
+			return bsg.Qualities[bsg.QualityKeys[i]].Rank > bsg.Qualities[bsg.QualityKeys[j]].Rank
+		})
 
-	// Section 2: Episodes
-	if len(episodes) > 0 {
-		type epCatGroup struct {
-			Category string
-			Rank     int
-			Items    []resolvedMetaItem
-		}
-		type sGroup struct {
-			Season     int
-			Categories map[string]*epCatGroup
-			CatKeys    []string
-		}
-		sMap := make(map[int]*sGroup)
-		var sKeys []int
+		for _, qKey := range bsg.QualityKeys {
+			bqs := bsg.Qualities[qKey]
+			var qSB strings.Builder
+			qSB.WriteString(fmt.Sprintf("📺 <b>════ SEASON %d • %s ════</b>\n\n", s, bqs.Category))
 
-		for _, ep := range episodes {
-			s := ep.Item.Season
-			if s <= 0 {
-				s = 1
-			}
-			if sMap[s] == nil {
-				sMap[s] = &sGroup{
-					Season:     s,
-					Categories: make(map[string]*epCatGroup),
+			// Zip / Pack first!
+			if len(bqs.Packs) > 0 {
+				qSB.WriteString("📦 <b>Complete Season Pack:</b>\n")
+				for _, p := range bqs.Packs {
+					name := p.Item.Filename
+					if name == "" {
+						name = p.Item.Title
+					}
+					dest := p.Result.Destination
+					sizeStr := p.Item.SizeDisplay
+					sizeLine := ""
+					if sizeStr != "" {
+						sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
+					}
+					qSB.WriteString(fmt.Sprintf("📁 <code>%s</code>\n%s   └ ⚡ <b>HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
+						html.EscapeString(name), sizeLine, dest, dest))
 				}
-				sKeys = append(sKeys, s)
 			}
-			sg := sMap[s]
-			cat, rank := getReleaseCategory(ep.Item.Filename, ep.Item.Quality)
-			if sg.Categories[cat] == nil {
-				sg.Categories[cat] = &epCatGroup{
-					Category: cat,
-					Rank:     rank,
-				}
-				sg.CatKeys = append(sg.CatKeys, cat)
-			}
-			sg.Categories[cat].Items = append(sg.Categories[cat].Items, ep)
-		}
 
-		sort.Ints(sKeys)
-		for _, s := range sKeys {
-			sg := sMap[s]
-			sort.Slice(sg.CatKeys, func(i, j int) bool {
-				return sg.Categories[sg.CatKeys[i]].Rank > sg.Categories[sg.CatKeys[j]].Rank
-			})
-			for _, cat := range sg.CatKeys {
-				cg := sg.Categories[cat]
-				sort.Slice(cg.Items, func(i, j int) bool {
-					return cg.Items[i].Item.Episode < cg.Items[j].Item.Episode
+			// Episodes for this quality right below the zip!
+			if len(bqs.Episodes) > 0 {
+				sort.Slice(bqs.Episodes, func(i, j int) bool {
+					return bqs.Episodes[i].Item.Episode < bqs.Episodes[j].Item.Episode
 				})
-				var epSB strings.Builder
-				epSB.WriteString(fmt.Sprintf("🎬 <b>Season %d Episodes — %s:</b>\n", s, cg.Category))
-				for _, ep := range cg.Items {
+				qSB.WriteString("🎞️ <b>Episodes:</b>\n")
+				for _, ep := range bqs.Episodes {
 					name := ep.Item.Filename
 					if name == "" {
 						name = ep.Item.Title
@@ -837,18 +839,19 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 					if sizeStr != "" {
 						sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
 					}
-					epSB.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
+					qSB.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
 						html.EscapeString(name), sizeLine, dest, dest))
 				}
-				msgBlocks = append(msgBlocks, epSB.String())
 			}
+
+			msgBlocks = append(msgBlocks, qSB.String())
 		}
 	}
 
 	// Section 3: Others / Uncategorized / Failures
 	if len(others) > 0 {
 		var oSB strings.Builder
-		if len(packs) > 0 || len(episodes) > 0 {
+		if len(bSeasonsList) > 0 {
 			oSB.WriteString("🔗 <b>Other Resolved Links:</b>\n")
 		}
 		for i, it := range others {
