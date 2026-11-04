@@ -591,7 +591,16 @@ router.get('/links/lookup-title', async (req, res) => {
     }
     logger.log('TIMING', `[lookup-title] took=${Date.now() - lookupStart}ms hit=${!!link}`);
     if (!link) return res.json({ title: '', filename: '' });
-    return res.json({ title: link.title || '', filename: link.filename || '' });
+    return res.json({
+      title: link.title || '',
+      filename: link.filename || '',
+      sizeDisplay: link.sizeDisplay || '',
+      quality: link.quality || '',
+      scope: link.scope || '',
+      season: link.season || 0,
+      episode: link.episode || 0,
+      sourceUrl: link.sourceUrl || ''
+    });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

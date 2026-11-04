@@ -34,6 +34,7 @@ type StoredLink struct {
 	Title       string `json:"title"`
 	Filename    string `json:"filename"`
 	Scope       string `json:"scope"`
+	Type        string `json:"type"`
 	Season      int    `json:"season"`
 	Episode     int    `json:"episode"`
 	Quality     string `json:"quality"`
@@ -218,7 +219,7 @@ func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*Serie
 	}
 
 	for _, m := range matched {
-		if m.Scope == "pack" {
+		if m.Scope == "pack" || m.Type == "pack" || strings.HasSuffix(strings.ToLower(m.Filename), ".zip") {
 			sr.Packs = append(sr.Packs, m)
 		} else {
 			sr.Episodes = append(sr.Episodes, m)
@@ -279,7 +280,7 @@ func (r *Resolver) SearchByTitle(ctx context.Context, titleQuery string) (*Serie
 	}
 
 	for _, m := range matched {
-		if m.Scope == "pack" {
+		if m.Scope == "pack" || m.Type == "pack" || strings.HasSuffix(strings.ToLower(m.Filename), ".zip") {
 			sr.Packs = append(sr.Packs, m)
 		} else {
 			sr.Episodes = append(sr.Episodes, m)
@@ -611,7 +612,8 @@ func (r *Resolver) scrapeViaRustWorker(ctx context.Context, rawURL string) (*Ser
 	return sr, nil
 }
 
-func (r *Resolver) lookupStoredTitle(ctx context.Context, mediatorURL, destURL string) string {
+// LookupStoredLink returns the full stored metadata (filename, size, quality, scope, etc.) for a link
+func (r *Resolver) LookupStoredLink(ctx context.Context, mediatorURL, destURL string) (StoredLink, bool) {
 	lookupStart := time.Now()
 	if r.baseAPI != "" && (mediatorURL != "" || destURL != "") {
 		reqURL := fmt.Sprintf("%s/api/links/lookup-title?mediatorUrl=%s&providerUrl=%s",
@@ -621,18 +623,10 @@ func (r *Resolver) lookupStoredTitle(ctx context.Context, mediatorURL, destURL s
 		if req, err := http.NewRequestWithContext(reqCtx, "GET", reqURL, nil); err == nil {
 			if resp, err := r.httpClient.Do(req); err == nil && resp.StatusCode == http.StatusOK {
 				defer resp.Body.Close()
-				var res struct {
-					Title    string `json:"title"`
-					Filename string `json:"filename"`
-				}
-				if err := json.NewDecoder(resp.Body).Decode(&res); err == nil {
-					log.Printf("[TIMING] lookup-title mediatorURL=%s took=%v hit=%v", mediatorURL, time.Since(lookupStart), res.Filename != "" || res.Title != "")
-					if res.Filename != "" {
-						return res.Filename
-					}
-					if res.Title != "" {
-						return res.Title
-					}
+				var res StoredLink
+				if err := json.NewDecoder(resp.Body).Decode(&res); err == nil && (res.Filename != "" || res.Title != "") {
+					log.Printf("[TIMING] lookup-stored-link mediatorURL=%s took=%v hit=true", mediatorURL, time.Since(lookupStart))
+					return res, true
 				}
 			}
 		}
@@ -650,16 +644,24 @@ func (r *Resolver) lookupStoredTitle(ctx context.Context, mediatorURL, destURL s
 			var allItems []StoredLink
 			if err := json.Unmarshal(data, &allItems); err == nil && len(allItems) > 0 {
 				for _, item := range allItems {
-					if strings.EqualFold(item.MediatorURL, mediatorURL) || (destURL != "" && strings.EqualFold(item.ProviderURL, destURL)) {
-						if item.Filename != "" {
-							return item.Filename
-						} else if item.Title != "" {
-							return item.Title
-						}
+					if (mediatorURL != "" && strings.EqualFold(item.MediatorURL, mediatorURL)) ||
+						(destURL != "" && strings.EqualFold(item.ProviderURL, destURL)) {
+						return item, true
 					}
 				}
 			}
 		}
+	}
+	return StoredLink{}, false
+}
+
+func (r *Resolver) lookupStoredTitle(ctx context.Context, mediatorURL, destURL string) string {
+	item, ok := r.LookupStoredLink(ctx, mediatorURL, destURL)
+	if ok {
+		if item.Filename != "" {
+			return item.Filename
+		}
+		return item.Title
 	}
 	return ""
 }
