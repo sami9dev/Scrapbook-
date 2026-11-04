@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -146,55 +145,67 @@ func (r *Resolver) fetchAllStoredLinks(ctx context.Context) []StoredLink {
 	return nil
 }
 
-// GetSeriesReleases looks up all releases, season packs, and episodes for a movie/series page
+// GetSeriesReleases looks up all releases, season packs, and episodes for a movie/series page.
+// [OPT-1] Uses targeted ?sourceUrl= query on indexed field, avoiding full 500-item scan.
 func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*SeriesResult, error) {
-	allItems := r.fetchAllStoredLinks(ctx)
-
 	normQuery := strings.TrimRight(strings.ToLower(rawURL), "/")
 	slug := extractSlug(normQuery)
-	var matched []StoredLink
-
 	slugTitle := extractSlugTitle(slug)
-	slugWords := strings.Split(slugTitle, "-")
 
-	for _, item := range allItems {
-		itemSrc := strings.TrimRight(strings.ToLower(item.SourceURL), "/")
-		itemTitle := strings.ToLower(item.Title)
-		// Check exact source URL or slug match
-		if itemSrc == normQuery || (slug != "" && strings.Contains(itemSrc, slug)) {
-			matched = append(matched, item)
-			continue
-		}
-		// Check title match using slug keywords (e.g. 'players' in 'the.players.2012...')
-		if slugTitle != "" && strings.Contains(itemTitle, slugTitle) {
-			matched = append(matched, item)
-			continue
-		}
-		if len(slugWords) > 0 && slugWords[0] != "" && strings.Contains(itemTitle, slugWords[0]) {
-			matched = append(matched, item)
+	catStart := time.Now()
+	// 1. Targeted indexed query by sourceUrl
+	matched := r.fetchLinksBySourceURL(ctx, rawURL)
+
+	// 2. If no exact sourceUrl match, try slug title search
+	if len(matched) == 0 && slugTitle != "" {
+		matched = r.fetchLinksByTitleSearch(ctx, slugTitle)
+	}
+
+	// 3. Fallback: scan all stored links (preserves existing behavior and dev/file fallback)
+	if len(matched) == 0 {
+		allItems := r.fetchAllStoredLinks(ctx)
+		slugWords := strings.Split(slugTitle, "-")
+		for _, item := range allItems {
+			itemSrc := strings.TrimRight(strings.ToLower(item.SourceURL), "/")
+			itemTitle := strings.ToLower(item.Title)
+			if itemSrc == normQuery || (slug != "" && strings.Contains(itemSrc, slug)) {
+				matched = append(matched, item)
+				continue
+			}
+			if slugTitle != "" && strings.Contains(itemTitle, slugTitle) {
+				matched = append(matched, item)
+				continue
+			}
+			if len(slugWords) > 0 && slugWords[0] != "" && strings.Contains(itemTitle, slugWords[0]) {
+				matched = append(matched, item)
+			}
 		}
 	}
 
-	// If not found in DB, auto-scrape on-demand!
-	if len(matched) == 0 {
-		log.Printf("[Auto-Scrape] Initiating on-demand scrape for: %s", rawURL)
+	log.Printf("[TIMING] catalogue-query url=%s results=%d took=%v", rawURL, len(matched), time.Since(catStart))
 
-		// 1. First attempt fast scraping & identification via Rust Worker microservice
+	// 4. If not found in DB, auto-scrape on-demand via HTTP fast path (no browser!)
+	if len(matched) == 0 {
+		log.Printf("[Auto-Scrape] Initiating HTTP fast-path catalogue fetch for: %s", rawURL)
+		if sr, err := r.scrapeViaFastPath(ctx, rawURL); err == nil && sr != nil && sr.Total > 0 {
+			log.Printf("[Auto-Scrape] Fast-path retrieved %d releases for %s", sr.Total, rawURL)
+			return sr, nil
+		} else if err != nil {
+			log.Printf("[Auto-Scrape] Fast-path note: %v", err)
+		}
+
+		// Fallback to Rust Worker microservice (if configured)
 		if r.rustWorkerURL != "" {
+			rustStart := time.Now()
 			if sr, err := r.scrapeViaRustWorker(ctx, rawURL); err == nil && sr != nil && sr.Total > 0 {
-				log.Printf("[Auto-Scrape] Successfully retrieved %d releases via Rust Worker in %s", sr.Total, rawURL)
+				log.Printf("[Auto-Scrape] Successfully retrieved %d releases via Rust Worker in %v", sr.Total, time.Since(rustStart))
 				return sr, nil
 			} else if err != nil {
 				log.Printf("[Auto-Scrape] Rust Worker query notice: %v", err)
 			}
 		}
 
-		// Never run local browser scraper scripts on Windows to prevent PC freezing
 		return nil, errors.New("title is not yet cached. Please allow the Render cloud worker to complete scraping.")
-	}
-
-	if len(matched) == 0 {
-		return nil, errors.New("no releases found for this title yet. Please scrape this URL first.")
 	}
 
 	isMovie := strings.Contains(strings.ToLower(rawURL), "/movies/") || matched[0].Scope == "movie"
@@ -217,65 +228,57 @@ func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*Serie
 	return sr, nil
 }
 
-// SearchByTitle searches the cached releases by movie/series title keyword
+// SearchByTitle searches the cached releases by movie/series title keyword.
+// [OPT-1] Uses targeted ?titleSearch= query, avoiding full 500-item scan.
 func (r *Resolver) SearchByTitle(ctx context.Context, titleQuery string) (*SeriesResult, error) {
-	allItems := r.fetchAllStoredLinks(ctx)
-	if len(allItems) == 0 {
-		return nil, errors.New("catalogue database is currently empty.")
-	}
-
 	normQuery := strings.ToLower(strings.TrimSpace(titleQuery))
 	if normQuery == "" {
 		return nil, errors.New("search query cannot be empty.")
 	}
 
-	// Group items by SourceURL
-	sourceGroups := make(map[string][]StoredLink)
-	for _, item := range allItems {
-		sourceGroups[item.SourceURL] = append(sourceGroups[item.SourceURL], item)
-	}
+	catStart := time.Now()
+	// 1. Targeted indexed title search
+	matched := r.fetchLinksByTitleSearch(ctx, normQuery)
 
-	// Find best matching source group
-	var bestMatch []StoredLink
-	for src, items := range sourceGroups {
-		normSrc := strings.ToLower(src)
-		title := ""
-		if len(items) > 0 {
-			title = strings.ToLower(items[0].Title)
-		}
-		if strings.Contains(normSrc, normQuery) || (title != "" && strings.Contains(title, normQuery)) {
-			bestMatch = items
-			break
-		}
-	}
-
-	if len(bestMatch) == 0 {
-		var available []string
-		seen := make(map[string]bool)
-		for _, items := range sourceGroups {
-			if len(items) > 0 {
-				disp := extractDisplayTitle(items[0].Title)
-				if !seen[disp] {
-					seen[disp] = true
-					available = append(available, disp)
+	// 2. Fallback: scan all stored links (preserves existing behavior and dev/file fallback)
+	if len(matched) == 0 {
+		allItems := r.fetchAllStoredLinks(ctx)
+		if len(allItems) > 0 {
+			sourceGroups := make(map[string][]StoredLink)
+			for _, item := range allItems {
+				sourceGroups[item.SourceURL] = append(sourceGroups[item.SourceURL], item)
+			}
+			for src, items := range sourceGroups {
+				normSrc := strings.ToLower(src)
+				title := ""
+				if len(items) > 0 {
+					title = strings.ToLower(items[0].Title)
+				}
+				if strings.Contains(normSrc, normQuery) || (title != "" && strings.Contains(title, normQuery)) {
+					matched = items
+					break
 				}
 			}
 		}
-		sort.Strings(available)
-		return nil, fmt.Errorf("no pre-indexed title matching '<b>%s</b>'.\n\n📚 <b>Available Pre-Indexed Titles:</b>\n• %s\n\n👉 <i>Or send the full XDMovies page link to resolve!</i>",
-			html.EscapeString(titleQuery), strings.Join(available, "\n• "))
 	}
 
-	isMovie := strings.Contains(strings.ToLower(bestMatch[0].SourceURL), "/movies/") || bestMatch[0].Scope == "movie"
+	log.Printf("[TIMING] catalogue-query titleSearch=%s results=%d took=%v", normQuery, len(matched), time.Since(catStart))
+
+	if len(matched) == 0 {
+		return nil, fmt.Errorf("no pre-indexed title matching '<b>%s</b>'.\n\n👉 <i>Or send the full XDMovies page link to resolve!</i>",
+			html.EscapeString(titleQuery))
+	}
+
+	isMovie := strings.Contains(strings.ToLower(matched[0].SourceURL), "/movies/") || matched[0].Scope == "movie"
 
 	sr := &SeriesResult{
-		Title:   extractDisplayTitle(bestMatch[0].Title),
-		URL:     bestMatch[0].SourceURL,
+		Title:   extractDisplayTitle(matched[0].Title),
+		URL:     matched[0].SourceURL,
 		IsMovie: isMovie,
-		Total:   len(bestMatch),
+		Total:   len(matched),
 	}
 
-	for _, m := range bestMatch {
+	for _, m := range matched {
 		if m.Scope == "pack" {
 			sr.Packs = append(sr.Packs, m)
 		} else {
@@ -539,7 +542,10 @@ func (r *Resolver) scrapeViaRustWorker(ctx context.Context, rawURL string) (*Ser
 	payloadBytes, _ := json.Marshal(rustScrapePayload{URL: rawURL})
 	reqURL := fmt.Sprintf("%s/api/scrape-and-identify", r.rustWorkerURL)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, bytes.NewBuffer(payloadBytes))
+	rustCtx, rustCancel := context.WithTimeout(ctx, 8*time.Second)
+	defer rustCancel()
+
+	req, err := http.NewRequestWithContext(rustCtx, "POST", reqURL, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -606,13 +612,52 @@ func (r *Resolver) scrapeViaRustWorker(ctx context.Context, rawURL string) (*Ser
 }
 
 func (r *Resolver) lookupStoredTitle(ctx context.Context, mediatorURL, destURL string) string {
-	allItems := r.fetchAllStoredLinks(ctx)
-	for _, item := range allItems {
-		if strings.EqualFold(item.MediatorURL, mediatorURL) || (destURL != "" && strings.EqualFold(item.ProviderURL, destURL)) {
-			if item.Filename != "" {
-				return item.Filename
-			} else if item.Title != "" {
-				return item.Title
+	lookupStart := time.Now()
+	if r.baseAPI != "" && (mediatorURL != "" || destURL != "") {
+		reqURL := fmt.Sprintf("%s/api/links/lookup-title?mediatorUrl=%s&providerUrl=%s",
+			r.baseAPI, url.QueryEscape(mediatorURL), url.QueryEscape(destURL))
+		reqCtx, reqCancel := context.WithTimeout(ctx, 3*time.Second)
+		defer reqCancel()
+		if req, err := http.NewRequestWithContext(reqCtx, "GET", reqURL, nil); err == nil {
+			if resp, err := r.httpClient.Do(req); err == nil && resp.StatusCode == http.StatusOK {
+				defer resp.Body.Close()
+				var res struct {
+					Title    string `json:"title"`
+					Filename string `json:"filename"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&res); err == nil {
+					log.Printf("[TIMING] lookup-title mediatorURL=%s took=%v hit=%v", mediatorURL, time.Since(lookupStart), res.Filename != "" || res.Title != "")
+					if res.Filename != "" {
+						return res.Filename
+					}
+					if res.Title != "" {
+						return res.Title
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to local files if API is unavailable
+	for _, p := range []string{
+		"/app/data/in_memory_scraped_links.json",
+		"../data/in_memory_scraped_links.json",
+		"data/in_memory_scraped_links.json",
+		"C:\\Users\\sk621\\scraper\\data\\in_memory_scraped_links.json",
+		"../scraper/data/in_memory_scraped_links.json",
+	} {
+		if data, err := os.ReadFile(p); err == nil {
+			var allItems []StoredLink
+			if err := json.Unmarshal(data, &allItems); err == nil && len(allItems) > 0 {
+				for _, item := range allItems {
+					if strings.EqualFold(item.MediatorURL, mediatorURL) || (destURL != "" && strings.EqualFold(item.ProviderURL, destURL)) {
+						if item.Filename != "" {
+							return item.Filename
+						} else if item.Title != "" {
+							return item.Title
+						}
+					}
+				}
 			}
 		}
 	}
@@ -624,7 +669,9 @@ func (r *Resolver) checkUpstashLinkCache(ctx context.Context, mediatorURL string
 		return "", false
 	}
 	reqURL := fmt.Sprintf("%s/api/resolve/cache?url=%s", r.rustWorkerURL, url.QueryEscape(mediatorURL))
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	cacheCtx, cacheCancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cacheCancel()
+	req, err := http.NewRequestWithContext(cacheCtx, "GET", reqURL, nil)
 	if err != nil {
 		return "", false
 	}
@@ -734,4 +781,143 @@ func (r *Resolver) EnqueueBatchJob(ctx context.Context, urls []string, chatID in
 	}
 
 	return &res, nil
+}
+
+// HasRustWorker returns whether RUST_WORKER_URL is configured.
+func (r *Resolver) HasRustWorker() bool {
+	return r.rustWorkerURL != ""
+}
+
+// fetchLinksBySourceURL queries MongoDB via targeted ?sourceUrl= filter (uses index).
+func (r *Resolver) fetchLinksBySourceURL(ctx context.Context, sourceURL string) []StoredLink {
+	if r.baseAPI == "" || sourceURL == "" {
+		return nil
+	}
+	reqURL := fmt.Sprintf("%s/api/links?sourceUrl=%s&limit=100", r.baseAPI, url.QueryEscape(sourceURL))
+	reqCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, "GET", reqURL, nil)
+	if err != nil {
+		return nil
+	}
+	resp, err := r.httpClient.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return nil
+	}
+	defer resp.Body.Close()
+	var items []StoredLink
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		return nil
+	}
+	return items
+}
+
+// fetchLinksByTitleSearch queries MongoDB via targeted ?titleSearch= filter (uses title index).
+func (r *Resolver) fetchLinksByTitleSearch(ctx context.Context, titleQuery string) []StoredLink {
+	if r.baseAPI == "" || titleQuery == "" {
+		return nil
+	}
+	reqURL := fmt.Sprintf("%s/api/links?titleSearch=%s&limit=50", r.baseAPI, url.QueryEscape(titleQuery))
+	reqCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, "GET", reqURL, nil)
+	if err != nil {
+		return nil
+	}
+	resp, err := r.httpClient.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return nil
+	}
+	defer resp.Body.Close()
+	var items []StoredLink
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		return nil
+	}
+	return items
+}
+
+type scrapePagePayload struct {
+	URL string `json:"url"`
+}
+
+type scrapePageResponse struct {
+	Success       bool         `json:"success"`
+	Challenge     bool         `json:"challenge"`
+	Title         string       `json:"title"`
+	Type          string       `json:"type"`
+	TotalReleases int          `json:"totalReleases"`
+	Records       []StoredLink `json:"records"`
+	Error         string       `json:"error"`
+}
+
+func (r *Resolver) scrapeViaFastPath(ctx context.Context, rawURL string) (*SeriesResult, error) {
+	if r.baseAPI == "" {
+		return nil, errors.New("baseAPI not configured")
+	}
+
+	payloadBytes, err := json.Marshal(scrapePagePayload{URL: rawURL})
+	if err != nil {
+		return nil, err
+	}
+
+	fastCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+
+	reqURL := fmt.Sprintf("%s/api/scrape-page", r.baseAPI)
+	req, err := http.NewRequestWithContext(fastCtx, "POST", reqURL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("scrape-page returned HTTP %d", resp.StatusCode)
+	}
+
+	var res scrapePageResponse
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+
+	if !res.Success || len(res.Records) == 0 {
+		if res.Challenge {
+			return nil, errors.New("cloudflare challenge detected")
+		}
+		errMsg := res.Error
+		if errMsg == "" {
+			errMsg = "fast-path returned no releases"
+		}
+		return nil, errors.New(errMsg)
+	}
+
+	isMovie := strings.EqualFold(res.Type, "movie") || strings.Contains(strings.ToLower(rawURL), "/movies/")
+
+	sr := &SeriesResult{
+		Title:   extractDisplayTitle(res.Title),
+		URL:     rawURL,
+		IsMovie: isMovie,
+		Total:   len(res.Records),
+	}
+
+	for _, m := range res.Records {
+		if m.Scope == "pack" {
+			sr.Packs = append(sr.Packs, m)
+		} else {
+			sr.Episodes = append(sr.Episodes, m)
+		}
+	}
+
+	return sr, nil
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"io"
 	"net/http"
 	"strings"
@@ -201,13 +202,11 @@ func (c *MultiTierCache) setL2(ctx context.Context, rawURL, value string, ttl ti
 	return nil
 }
 
-// Get checks L1 (sync.Map) -> L2 (Upstash Redis) -> L3 (MongoDB) and backfills upper tiers.
-func (c *MultiTierCache) Get(ctx context.Context, rawURL string) (string, bool, error) {
+// GetL1 checks strictly the in-memory sync.Map tier (< 0.01ms), avoiding remote network calls.
+func (c *MultiTierCache) GetL1(rawURL string) (string, bool, error) {
 	if rawURL == "" {
 		return "", false, nil
 	}
-
-	// 1. Check L1 (Go sync.Map) - < 0.01ms
 	if val, ok := c.l1Memory.Load(rawURL); ok {
 		if item, isItem := val.(Item); isItem {
 			if item.IsDead || item.Destination == DeadLinkSentinel {
@@ -234,6 +233,47 @@ func (c *MultiTierCache) Get(ctx context.Context, rawURL string) (string, bool, 
 			return strVal, true, nil
 		}
 	}
+	return "", false, nil
+}
+
+// Get checks L1 (sync.Map) -> L2 (Upstash Redis) -> L3 (MongoDB) and backfills upper tiers.
+func (c *MultiTierCache) Get(ctx context.Context, rawURL string) (string, bool, error) {
+	if rawURL == "" {
+		return "", false, nil
+	}
+	start := time.Now()
+
+	// 1. Check L1 (Go sync.Map) - < 0.01ms
+	if val, ok := c.l1Memory.Load(rawURL); ok {
+		if item, isItem := val.(Item); isItem {
+			if item.IsDead || item.Destination == DeadLinkSentinel {
+				if time.Now().Before(item.ExpiresAt) {
+					atomic.AddUint64(&c.hits, 1)
+					atomic.AddUint64(&c.deadHits, 1)
+					log.Printf("[TIMING] cache-lookup tier=L1 url=%s hit=true dead=true took=%v", rawURL, time.Since(start))
+					return "", true, ErrDeadLink
+				}
+				c.deleteL1(rawURL, val)
+			} else {
+				if item.ExpiresAt.IsZero() || time.Now().Before(item.ExpiresAt) {
+					atomic.AddUint64(&c.hits, 1)
+					log.Printf("[TIMING] cache-lookup tier=L1 url=%s hit=true took=%v", rawURL, time.Since(start))
+					return item.Destination, true, nil
+				}
+				c.deleteL1(rawURL, val)
+			}
+		} else if strVal, isStr := val.(string); isStr {
+			if strVal == DeadLinkSentinel {
+				atomic.AddUint64(&c.hits, 1)
+				atomic.AddUint64(&c.deadHits, 1)
+				log.Printf("[TIMING] cache-lookup tier=L1 url=%s hit=true dead=true took=%v", rawURL, time.Since(start))
+				return "", true, ErrDeadLink
+			}
+			atomic.AddUint64(&c.hits, 1)
+			log.Printf("[TIMING] cache-lookup tier=L1 url=%s hit=true took=%v", rawURL, time.Since(start))
+			return strVal, true, nil
+		}
+	}
 
 	// 2. Check L2 (Upstash Redis) - ~5-15ms
 	if c.hasL2() {
@@ -253,8 +293,10 @@ func (c *MultiTierCache) Get(ctx context.Context, rawURL string) (string, bool, 
 			atomic.AddUint64(&c.hits, 1)
 			if redisVal == DeadLinkSentinel {
 				atomic.AddUint64(&c.deadHits, 1)
+				log.Printf("[TIMING] cache-lookup tier=L2 url=%s hit=true dead=true took=%v", rawURL, time.Since(start))
 				return "", true, ErrDeadLink
 			}
+			log.Printf("[TIMING] cache-lookup tier=L2 url=%s hit=true took=%v", rawURL, time.Since(start))
 			return redisVal, true, nil
 		}
 	}
@@ -291,11 +333,13 @@ func (c *MultiTierCache) Get(ctx context.Context, rawURL string) (string, bool, 
 				}(rawURL, resolved)
 			}
 			atomic.AddUint64(&c.hits, 1)
+			log.Printf("[TIMING] cache-lookup tier=L3 url=%s hit=true took=%v", rawURL, time.Since(start))
 			return resolved, true, nil
 		}
 	}
 
 	atomic.AddUint64(&c.misses, 1)
+	log.Printf("[TIMING] cache-lookup tier=miss url=%s hit=false took=%v", rawURL, time.Since(start))
 	return "", false, nil
 }
 

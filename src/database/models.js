@@ -1,3 +1,8 @@
+export function normalizeTitle(str) {
+  if (!str || typeof str !== 'string') return '';
+  return str.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 import { dbManager } from './mongodb.js';
 import { generateDedupeKey } from '../utils/dedupe.js';
 import { logger } from '../logging/logger.js';
@@ -31,6 +36,8 @@ export class ScrapedLinksRepository {
   async initIndexes() {
     const col = this.collection;
     await col.createIndex({ sourceUrl: 1 });
+    await col.createIndex({ mediatorUrl: 1 });
+    await col.createIndex({ normalizedTitle: 1 });
     await col.createIndex({ providerUrl: 1 });
     await col.createIndex({ fileId: 1 });
     await col.createIndex({ title: 1 });
@@ -53,6 +60,7 @@ export class ScrapedLinksRepository {
       sourceUrl: data.sourceUrl,
       sourceDomain: data.sourceDomain || (data.sourceUrl ? new URL(data.sourceUrl).hostname : ''),
       title: data.title || null,
+      normalizedTitle: normalizeTitle(data.title || data.filename) || null,
       year: data.year ?? null,
       type: data.type || 'tv',
       scope: data.scope || (data.episode !== null && data.episode !== undefined ? 'episode' : (data.season !== null && data.season !== undefined ? 'pack' : 'movie')),

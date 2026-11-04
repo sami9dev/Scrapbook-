@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HubCloud Instant Solver</title>
+  <title>HubCloud Stream & Link Resolver</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -25,11 +25,7 @@
       --font-mono: 'JetBrains Mono', monospace;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: var(--font-sans);
@@ -39,7 +35,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 40px 20px 80px;
+      padding: 30px 16px 80px;
       position: relative;
       overflow-x: hidden;
     }
@@ -51,16 +47,16 @@
       top: -120px;
       left: 50%;
       transform: translateX(-50%);
-      width: 700px;
-      height: 450px;
-      background: radial-gradient(circle, rgba(16, 185, 129, 0.12) 0%, rgba(59, 130, 246, 0.08) 50%, transparent 80%);
+      width: 750px;
+      height: 480px;
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.14) 0%, rgba(59, 130, 246, 0.08) 50%, transparent 80%);
       pointer-events: none;
       z-index: 0;
     }
 
     .container {
       width: 100%;
-      max-width: 860px;
+      max-width: 900px;
       position: relative;
       z-index: 1;
       display: flex;
@@ -68,44 +64,43 @@
       align-items: center;
     }
 
-    /* Header & Branding */
+    /* Header */
     header {
       text-align: center;
-      margin-bottom: 36px;
-      margin-top: 20px;
+      margin-bottom: 28px;
     }
 
     .logo-badge {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 14px;
+      padding: 5px 14px;
       border-radius: 9999px;
       background: rgba(16, 185, 129, 0.1);
       border: 1px solid rgba(16, 185, 129, 0.25);
       color: var(--hubcloud);
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       font-weight: 700;
       letter-spacing: 0.5px;
       text-transform: uppercase;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
 
     h1 {
-      font-size: 2.75rem;
+      font-size: 2.6rem;
       font-weight: 800;
       letter-spacing: -0.03em;
       line-height: 1.15;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
       background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
 
     .subtitle {
-      font-size: 1.05rem;
+      font-size: 1rem;
       color: var(--text-muted);
-      max-width: 560px;
+      max-width: 580px;
       margin: 0 auto;
       line-height: 1.5;
     }
@@ -122,7 +117,7 @@
       gap: 12px;
       box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
       transition: all 0.2s ease;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
 
     .solver-box:focus-within {
@@ -157,34 +152,30 @@
       border: none;
       color: var(--text-muted);
       cursor: pointer;
-      font-size: 1.1rem;
       padding: 6px;
-      border-radius: 6px;
+      border-radius: 50%;
       display: none;
       align-items: center;
       justify-content: center;
+      transition: color 0.15s;
     }
 
-    .btn-clear:hover {
-      color: var(--text);
-      background: rgba(255, 255, 255, 0.05);
-    }
+    .btn-clear:hover { color: var(--text); }
 
     .btn-paste {
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid var(--card-border);
       color: var(--text-muted);
       font-family: var(--font-sans);
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       font-weight: 600;
-      padding: 8px 14px;
+      padding: 8px 12px;
       border-radius: 10px;
       cursor: pointer;
-      transition: all 0.15s ease;
       display: flex;
       align-items: center;
       gap: 6px;
-      white-space: nowrap;
+      transition: all 0.15s ease;
     }
 
     .btn-paste:hover {
@@ -193,13 +184,13 @@
     }
 
     .btn-solve {
-      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-      color: #ffffff;
+      background: linear-gradient(135deg, var(--hubcloud) 0%, #059669 100%);
       border: none;
+      color: #ffffff;
       font-family: var(--font-sans);
       font-size: 0.95rem;
       font-weight: 700;
-      padding: 12px 24px;
+      padding: 12px 22px;
       border-radius: 12px;
       cursor: pointer;
       transition: all 0.2s ease;
@@ -223,18 +214,18 @@
       box-shadow: none;
     }
 
-    /* Quick Sample Chips */
+    /* Sample Chips */
     .sample-chips {
       display: flex;
       align-items: center;
       gap: 8px;
       flex-wrap: wrap;
       justify-content: center;
-      margin-bottom: 32px;
+      margin-bottom: 26px;
     }
 
     .sample-label {
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       color: #64748b;
       font-weight: 600;
       text-transform: uppercase;
@@ -245,7 +236,7 @@
       background: rgba(30, 41, 59, 0.6);
       border: 1px solid var(--card-border);
       color: var(--text-muted);
-      font-size: 0.82rem;
+      font-size: 0.8rem;
       font-weight: 500;
       padding: 4px 12px;
       border-radius: 20px;
@@ -254,12 +245,12 @@
     }
 
     .chip:hover {
-      background: rgba(59, 130, 246, 0.15);
-      border-color: rgba(59, 130, 246, 0.4);
-      color: #60a5fa;
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #34d399;
     }
 
-    /* Status & Loading Indicator */
+    /* Status Panel */
     .status-panel {
       width: 100%;
       background: var(--card-bg);
@@ -267,23 +258,21 @@
       border-radius: 16px;
       padding: 24px;
       text-align: center;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
       display: none;
     }
 
     .spinner {
-      width: 38px;
-      height: 38px;
+      width: 36px;
+      height: 36px;
       border: 3px solid rgba(16, 185, 129, 0.15);
       border-top-color: var(--hubcloud);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
-      margin: 0 auto 14px;
+      margin: 0 auto 12px;
     }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     .status-title {
       font-weight: 700;
@@ -296,46 +285,60 @@
       color: var(--text-muted);
     }
 
-    /* Results Container */
+    /* Results */
     .results-container {
       width: 100%;
       display: none;
       flex-direction: column;
       gap: 16px;
-      margin-bottom: 32px;
+      margin-bottom: 30px;
     }
 
     .results-header {
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
       padding: 0 4px;
     }
 
     .results-title {
-      font-size: 1.15rem;
+      font-size: 1.25rem;
       font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge-count {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--hubcloud);
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    /* Section Headers */
+    .section-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #94a3b8;
+      margin-top: 10px;
+      margin-bottom: 4px;
+      padding-left: 2px;
       display: flex;
       align-items: center;
       gap: 8px;
     }
 
-    .release-count-badge {
-      background: rgba(16, 185, 129, 0.15);
-      color: var(--hubcloud);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-size: 0.75rem;
-      font-weight: 700;
-    }
-
-    /* Release Cards */
     .release-card {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
       border-radius: 14px;
-      padding: 18px 20px;
+      padding: 14px 18px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -345,9 +348,7 @@
 
     .release-card:hover {
       background: var(--card-hover);
-      border-color: rgba(16, 185, 129, 0.4);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.4);
+      border-color: rgba(16, 185, 129, 0.3);
     }
 
     .release-info {
@@ -363,273 +364,225 @@
       flex-wrap: wrap;
     }
 
-    .badge-quality {
-      background: #1e293b;
-      color: #38bdf8;
-      border: 1px solid #334155;
+    .badge-ep {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
       font-size: 0.75rem;
-      font-weight: 800;
-      padding: 3px 8px;
-      border-radius: 6px;
+      font-weight: 700;
       font-family: var(--font-mono);
+      padding: 2px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(59, 130, 246, 0.3);
     }
 
-    .badge-codec {
-      background: rgba(168, 85, 247, 0.15);
-      color: #c084fc;
-      border: 1px solid rgba(168, 85, 247, 0.3);
-      font-size: 0.72rem;
+    .badge-quality {
+      background: rgba(16, 185, 129, 0.12);
+      color: #34d399;
+      font-size: 0.75rem;
       font-weight: 700;
-      padding: 2px 7px;
-      border-radius: 5px;
       font-family: var(--font-mono);
+      padding: 2px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(16, 185, 129, 0.25);
     }
 
     .badge-size {
-      background: rgba(245, 158, 11, 0.12);
-      color: #fbbf24;
-      border: 1px solid rgba(245, 158, 11, 0.25);
-      font-size: 0.72rem;
-      font-weight: 700;
-      padding: 2px 7px;
-      border-radius: 5px;
+      color: var(--text-muted);
+      font-size: 0.75rem;
       font-family: var(--font-mono);
     }
 
     .release-filename {
-      font-size: 0.95rem;
-      font-weight: 600;
+      font-size: 0.9rem;
+      font-weight: 500;
       color: var(--text);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      font-family: var(--font-mono);
-      line-height: 1.4;
     }
 
     .release-actions {
       display: flex;
       align-items: center;
-      gap: 10px;
-    }
-
-    .btn-download {
-      background: var(--hubcloud);
-      color: #ffffff;
-      text-decoration: none;
-      font-weight: 700;
-      font-size: 0.9rem;
-      padding: 10px 18px;
-      border-radius: 10px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      transition: all 0.15s ease;
-      white-space: nowrap;
-      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-    }
-
-    .btn-download:hover {
-      background: var(--hubcloud-hover);
-      box-shadow: 0 6px 16px rgba(16, 185, 129, 0.45);
-      transform: translateY(-1px);
+      gap: 8px;
     }
 
     .btn-copy {
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid var(--card-border);
       color: var(--text-muted);
-      padding: 10px 14px;
-      border-radius: 10px;
-      font-size: 0.85rem;
+      font-family: var(--font-sans);
+      font-size: 0.82rem;
       font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 8px;
       cursor: pointer;
-      display: inline-flex;
+      display: flex;
       align-items: center;
       gap: 6px;
       transition: all 0.15s ease;
-      white-space: nowrap;
     }
 
     .btn-copy:hover {
       background: rgba(255, 255, 255, 0.1);
       color: var(--text);
-      border-color: #475569;
     }
 
-    /* History & Cache Section */
+    .btn-download {
+      background: linear-gradient(135deg, var(--hubcloud) 0%, #059669 100%);
+      color: #ffffff;
+      text-decoration: none;
+      font-size: 0.82rem;
+      font-weight: 700;
+      padding: 8px 16px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+    }
+
+    .btn-download:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+    }
+
+    /* History Card */
     .history-card {
       width: 100%;
       background: var(--card-bg);
       border: 1px solid var(--card-border);
       border-radius: 16px;
-      padding: 20px;
-      margin-top: 12px;
+      padding: 18px 22px;
+      margin-top: 10px;
     }
 
     .history-header {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      margin-bottom: 14px;
+      justify-content: space-between;
+      margin-bottom: 12px;
     }
 
     .history-title {
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       font-weight: 700;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
 
-    .btn-clear-history {
-      background: transparent;
-      border: none;
-      color: #64748b;
-      font-size: 0.8rem;
-      cursor: pointer;
-      font-family: inherit;
-    }
-
-    .btn-clear-history:hover {
-      color: var(--error);
-    }
-
     .history-list {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
     }
 
     .history-item {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      padding: 10px 14px;
-      background: rgba(30, 41, 59, 0.4);
-      border: 1px solid var(--card-border);
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.2);
       border-radius: 8px;
-      font-size: 0.88rem;
+      font-size: 0.85rem;
     }
 
     .history-item-title {
-      font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 500px;
+      max-width: 75%;
     }
 
     .history-item-link {
-      color: var(--hubcloud);
+      color: #34d399;
       text-decoration: none;
       font-weight: 600;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
+      font-size: 0.8rem;
     }
 
-    .history-item-link:hover {
-      text-decoration: underline;
+    footer {
+      margin-top: 50px;
+      text-align: center;
+      font-size: 0.85rem;
+      color: #64748b;
     }
 
-    /* Responsive */
+    footer a {
+      color: #38bdf8;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
     @media (max-width: 640px) {
-      h1 { font-size: 2.1rem; }
-      .solver-box {
-        flex-direction: column;
-        padding: 12px;
-      }
-      input[type="text"] {
-        width: 100%;
-      }
-      .btn-solve {
-        width: 100%;
-        justify-content: center;
-      }
-      .release-card {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-      .release-actions {
-        width: 100%;
-        justify-content: space-between;
-      }
-      .btn-download, .btn-copy {
-        flex: 1;
-        justify-content: center;
-      }
+      h1 { font-size: 2rem; }
+      .solver-box { flex-direction: column; padding: 12px; gap: 10px; }
+      input[type="text"] { width: 100%; }
+      .btn-solve { width: 100%; justify-content: center; }
+      .release-card { flex-direction: column; align-items: flex-start; gap: 12px; }
+      .release-actions { width: 100%; justify-content: flex-end; }
     }
   </style>
 </head>
 <body>
-
   <div class="container">
-    <!-- Header -->
     <header>
-      <div class="logo-badge">⚡ Instant HubCloud Resolver</div>
-      <h1>Direct HubCloud Solver</h1>
-      <p class="subtitle">Paste any XDMovies mediator download link or movie page to get direct 1-click HubCloud links instantly.</p>
+      <div class="logo-badge">⚡ Cloudflare Edge Powered</div>
+      <h1>HubCloud Stream & Link Resolver</h1>
+      <p class="subtitle">Search movies/series or paste any XDMovies link. Get direct, ad-free HubCloud download buttons instantly.</p>
     </header>
 
-    <!-- Search / Solver Input Box -->
     <div class="solver-box">
-      <div class="search-icon">🔗</div>
-      <input 
-        type="text" 
-        id="urlInput" 
-        placeholder="Paste mediator link (https://link.xdmovies.wtf/download/...) or movie URL"
-        autocomplete="off"
-        spellcheck="false"
-      />
+      <div class="search-icon">🔍</div>
+      <input type="text" id="urlInput" placeholder="Paste XDMovies URL or search title (e.g. Criminal Justice, Ali Baba)..." autofocus>
       <button class="btn-clear" id="btnClear" title="Clear input">✕</button>
       <button class="btn-paste" id="btnPaste" title="Paste from clipboard">📋 Paste</button>
       <button class="btn-solve" id="btnSolve">
-        <span>⚡ Resolve Link</span>
+        <span>⚡ Solve Link</span>
       </button>
     </div>
 
-    <!-- Quick Sample Chips -->
     <div class="sample-chips">
-      <span class="sample-label">Try Examples:</span>
-      <span class="chip" data-query="https://huh.xdmovies.wtf/movies/beast-2160p-1080p-hindi-tamil-download-800383">Beast (2022) [All 6 Releases]</span>
-      <span class="chip" data-query="https://link.xdmovies.wtf/download/9OlrAxRKyEWQPjTkEtQzTu2lWtNuLELvj2R_pdFqN54">Baahubali 2 (36GB Remux)</span>
-      <span class="chip" data-query="https://link.xdmovies.wtf/download/1htsHpcm4PMuLG7r6jMr5cwGe-a2kcrNZoXFzxQw0To">Beast 720p H.264</span>
-      <span class="chip" data-query="https://huh.xdmovies.wtf/series/apharan-1080p-720p-hindi-download-84962">Apharan (S01 & S02 Packs)</span>
+      <span class="sample-label">Quick Try:</span>
+      <span class="chip" data-query="Ali Baba aur 40 Bhoot">🎬 Ali Baba (2026)</span>
+      <span class="chip" data-query="Criminal Justice">⚖️ Criminal Justice</span>
+      <span class="chip" data-query="Mirzapur">🔥 Mirzapur</span>
+      <span class="chip" data-query="https://link.xdmovies.wtf/download/wFib9D8gUijLqmlIX8lrfMPV1ggmISpRsZImVDeJg7Y">🔗 Sample Mediator</span>
     </div>
 
-    <!-- Loading / Status Panel -->
     <div class="status-panel" id="statusPanel">
       <div class="spinner"></div>
-      <div class="status-title" id="statusTitle">Connecting to database & cache...</div>
-      <div class="status-desc" id="statusDesc">Checking pre-indexed HubCloud destinations for instant delivery.</div>
+      <div class="status-title" id="statusTitle">Connecting...</div>
+      <div class="status-desc" id="statusDesc">Please wait a moment.</div>
     </div>
 
-    <!-- Results Section -->
     <div class="results-container" id="resultsContainer">
       <div class="results-header">
         <div class="results-title">
-          <span id="resultsTitleText">Available HubCloud Downloads</span>
-          <span class="release-count-badge" id="resultsCountBadge">0 Links</span>
+          <span id="resultsTitleText">Available Releases</span>
+          <span class="badge-count" id="resultsCountBadge">0 Links</span>
         </div>
       </div>
-      <div id="releasesList"></div>
+      <div id="releasesList" style="display: flex; flex-direction: column; gap: 10px;"></div>
     </div>
 
-    <!-- Recent History -->
     <div class="history-card" id="historyCard" style="display: none;">
       <div class="history-header">
-        <div class="history-title">🕒 Recently Resolved Links</div>
-        <button class="btn-clear-history" id="btnClearHistory">Clear History</button>
+        <span class="history-title">🕒 Recent Solved History</span>
+        <button class="btn-paste" id="btnClearHistory" style="padding: 4px 10px; font-size: 0.75rem;">Clear</button>
       </div>
       <div class="history-list" id="historyList"></div>
     </div>
+
+    <footer>
+      Powered by Cloudflare Pages &bull; Live Bot on Telegram: <a href="https://t.me/Linkscrap_bot" target="_blank">@Linkscrap_bot</a>
+    </footer>
   </div>
 
   <script>
-    const API_BASE = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
-      ? window.location.origin
-      : 'https://scrapbook-0mrx.onrender.com';
+    const API_BASE = 'https://scrapbook-0mrx.onrender.com';
 
     const urlInput = document.getElementById('urlInput');
     const btnClear = document.getElementById('btnClear');
@@ -657,7 +610,7 @@
       historyList.innerHTML = items.map(item => `
         <div class="history-item">
           <div class="history-item-title">${escapeHtml(item.title || item.filename || 'Resolved File')}</div>
-          <a class="history-item-link" href="${item.url}" target="_blank" rel="noopener">⚡ HubCloud ↗</a>
+          <a class="history-item-link" href="${escapeHtml(item.url)}" target="_blank" rel="noopener">⚡ HubCloud ➔</a>
         </div>
       `).join('');
     }
@@ -676,7 +629,6 @@
       loadHistory();
     });
 
-    // Input handlers
     urlInput.addEventListener('input', () => {
       btnClear.style.display = urlInput.value ? 'flex' : 'none';
     });
@@ -721,69 +673,90 @@
       resultsContainer.style.display = 'none';
       statusPanel.style.display = 'block';
       btnSolve.disabled = true;
-      statusTitle.textContent = 'Searching Pre-Indexed Database...';
-      statusDesc.textContent = 'Querying cloud catalogue for instant HubCloud destination...';
+      statusTitle.textContent = 'Searching Pre-Indexed Catalogue...';
+      statusDesc.textContent = 'Checking in-memory and database indexes (<15ms)...';
+
+      const norm = query.toLowerCase().replace(/\/+$/, '');
+      let matched = [];
 
       try {
-        // Step 1: Query API for cached / stored links
-        const res = await fetch(`${API_BASE}/api/links?limit=500`);
-        const allItems = await res.json();
+        // Path 1: Direct Mediator Link
+        if (norm.includes('link.xdmovies') || norm.includes('/download/')) {
+          statusTitle.textContent = 'Looking up mediator link...';
+          const res = await fetch(`${API_BASE}/api/links?mediatorUrl=${encodeURIComponent(query)}`);
+          if (res.ok) {
+            const data = await res.json();
+            matched = (data || []).filter(item => item.providerUrl && item.providerUrl.includes('hubcloud'));
+          }
 
-        const normQuery = query.toLowerCase().replace(/\/+$/, '');
-        let matched = [];
-
-        // Check if query is an exact mediator URL
-        matched = allItems.filter(item => {
-          if (!item.providerUrl || !item.providerUrl.includes('hubcloud')) return false;
-          const med = (item.mediatorUrl || '').toLowerCase();
-          return med === normQuery || (med && normQuery.includes(med)) || (item.mediatorUrl && item.mediatorUrl === query);
-        });
-
-        // If not matched by mediator, check by SourceURL or title slug
-        if (matched.length === 0) {
-          const slug = normQuery.split('/').pop();
-          matched = allItems.filter(item => {
-            if (!item.providerUrl || !item.providerUrl.includes('hubcloud')) return false;
-            const src = (item.sourceUrl || '').toLowerCase();
-            return src === normQuery || (slug && src.includes(slug));
-          });
-        }
-
-        // Case A: Found pre-indexed HubCloud links!
-        if (matched.length > 0) {
-          renderResults(matched, query);
-          return;
-        }
-
-        // Case B: Not found in pre-indexed catalogue, try on-demand resolve-link
-        statusTitle.textContent = 'Resolving Mediator Redirects...';
-        statusDesc.textContent = 'Bypassing mediator countdown and verifying direct HubCloud link...';
-
-        const resolveRes = await fetch(`${API_BASE}/api/resolve-link`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mediatorUrl: query })
-        });
-
-        const resolveData = await resolveRes.json();
-        if (resolveData.success && resolveData.destination && resolveData.destination.includes('hubcloud')) {
-          renderResults([
-            {
-              title: resolveData.title || 'Resolved File',
-              filename: resolveData.title || query,
-              quality: 'HD',
-              sizeDisplay: '',
-              providerUrl: resolveData.destination
+          if (matched.length === 0) {
+            statusTitle.textContent = 'Resolving Mediator Challenge...';
+            statusDesc.textContent = 'Solving Cloudflare challenge and getting direct HubCloud destination...';
+            const resolveRes = await fetch(`${API_BASE}/api/resolve-link`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mediatorUrl: query })
+            });
+            const resolveData = await resolveRes.json();
+            if (resolveData.success && resolveData.destination && resolveData.destination.includes('hubcloud')) {
+              renderResults([{
+                title: resolveData.title || 'Resolved File',
+                filename: resolveData.title || query,
+                quality: 'HD',
+                sizeDisplay: '',
+                providerUrl: resolveData.destination
+              }], query);
+              return;
             }
-          ], query);
-          return;
+            throw new Error(resolveData.error || 'Could not resolve this mediator link.');
+          }
+        }
+        // Path 2: Series or Movie Landing URL
+        else if (norm.startsWith('http://') || norm.startsWith('https://')) {
+          statusTitle.textContent = 'Fetching Series / Movie Releases...';
+          const res = await fetch(`${API_BASE}/api/links?sourceUrl=${encodeURIComponent(query)}`);
+          if (res.ok) {
+            const data = await res.json();
+            matched = (data || []).filter(item => item.providerUrl && item.providerUrl.includes('hubcloud'));
+          }
+
+          // If not in DB, trigger auto-scrape
+          if (matched.length === 0) {
+            statusTitle.textContent = 'Scanning Series Releases...';
+            statusDesc.textContent = 'Analyzing landing page for available episodes...';
+            try {
+              const scrapeRes = await fetch(`${API_BASE}/api/scrape-page`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: query })
+              });
+              const scrapeData = await scrapeRes.json();
+              if (scrapeData.success && scrapeData.records) {
+                matched = (scrapeData.records || []).filter(item => item.providerUrl && item.providerUrl.includes('hubcloud'));
+              }
+            } catch (_) {}
+          }
+        }
+        // Path 3: Title Search (e.g. Criminal Justice, Ali Baba)
+        else {
+          statusTitle.textContent = 'Searching by Title...';
+          const res = await fetch(`${API_BASE}/api/links?titleSearch=${encodeURIComponent(query)}`);
+          if (res.ok) {
+            const data = await res.json();
+            matched = (data || []).filter(item => item.providerUrl && item.providerUrl.includes('hubcloud'));
+          }
         }
 
-        throw new Error(resolveData.error || 'Destination HubCloud link could not be automatically resolved.');
-
+        // Render results
+        if (matched && matched.length > 0) {
+          renderResults(matched, query);
+        } else {
+          statusTitle.textContent = 'No Direct Links Available Yet';
+          statusDesc.innerHTML = `<span style="color: #f59e0b;">This title was discovered, but direct HubCloud links have not been solved yet.</span><br><br>👉 You can paste an episode's download link directly into <a href="https://t.me/Linkscrap_bot" target="_blank" style="color: #38bdf8; font-weight: 600;">@Linkscrap_bot</a> in Telegram to resolve it on-demand!`;
+        }
       } catch (err) {
         statusTitle.textContent = 'Resolution Notice';
-        statusDesc.innerHTML = `<span style="color: #ef4444;">⚠️ ${escapeHtml(err.message)}</span><br><br>👉 You can paste this mediator link directly into <a href="https://t.me/Linkscrap_bot" target="_blank" style="color: #38bdf8; font-weight: 600;">@Linkscrap_bot</a> in Telegram to resolve it instantly.`;
+        statusDesc.innerHTML = `<span style="color: #ef4444;">${escapeHtml(err.message)}</span><br><br>💡 Try pasting individual download links or using <a href="https://t.me/Linkscrap_bot" target="_blank" style="color: #38bdf8; font-weight: 600;">@Linkscrap_bot</a>.`;
       } finally {
         btnSolve.disabled = false;
       }
@@ -793,7 +766,6 @@
       statusPanel.style.display = 'none';
       resultsContainer.style.display = 'flex';
 
-      // Sort by Quality (2160p -> 1080p -> 720p -> 480p)
       const rank = q => {
         q = (q || '').toLowerCase();
         if (q.includes('2160') || q.includes('4k')) return 40;
@@ -803,21 +775,22 @@
         return 5;
       };
 
-      items.sort((a, b) => rank(b.quality) - rank(a.quality));
+      items.sort((a, b) => {
+        if ((a.season || 0) !== (b.season || 0)) return (a.season || 0) - (b.season || 0);
+        if ((a.episode || 0) !== (b.episode || 0)) return (a.episode || 0) - (b.episode || 0);
+        return rank(b.quality) - rank(a.quality);
+      });
 
       resultsCountBadge.textContent = `${items.length} HubCloud Link${items.length > 1 ? 's' : ''}`;
-      
-      const displayTitle = items[0].title || 'Available Releases';
-      resultsTitleText.textContent = displayTitle;
+      resultsTitleText.textContent = items[0].title ? items[0].title.split('.')[0].replace(/[-_]/g, ' ') : 'Available Releases';
 
       releasesList.innerHTML = items.map((item, index) => {
         const quality = (item.quality || 'HD').toUpperCase();
-        const codec = item.codec || (item.filename && item.filename.includes('H.264') ? 'H.264' : (item.filename && item.filename.includes('H.265') ? 'H.265' : ''));
         const size = item.sizeDisplay || '';
         const name = item.filename || item.title || `Release #${index + 1}`;
         const hubUrl = item.providerUrl;
+        const epLabel = (item.season && item.episode) ? `S${String(item.season).padStart(2,'0')}E${String(item.episode).padStart(2,'0')}` : (item.scope === 'pack' ? 'SEASON PACK' : '');
 
-        // Save first match to history
         if (index === 0) {
           saveToHistory({ title: name, url: hubUrl });
         }
@@ -826,8 +799,8 @@
           <div class="release-card">
             <div class="release-info">
               <div class="release-meta">
+                ${epLabel ? `<span class="badge-ep">📺 ${escapeHtml(epLabel)}</span>` : ''}
                 <span class="badge-quality">⚡ ${escapeHtml(quality)}</span>
-                ${codec ? `<span class="badge-codec">${escapeHtml(codec)}</span>` : ''}
                 ${size ? `<span class="badge-size">💾 ${escapeHtml(size)}</span>` : ''}
               </div>
               <div class="release-filename" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
@@ -869,7 +842,6 @@
       })[m]);
     }
 
-    // Initialize history on load
     loadHistory();
   </script>
 </body>

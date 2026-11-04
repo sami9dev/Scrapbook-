@@ -400,8 +400,13 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 				k.Season, k.Episode, strings.Join(qParts, " | ")))
 		}
 
-		header := fmt.Sprintf("📺 <b>%s — EPISODES (BY QUALITY)</b>", html.EscapeString(series.Title))
-		_ = b.sendChunkedMessages(c.Recipient(), header, epLines)
+		if len(epLines) > 0 {
+			header := fmt.Sprintf("🖥️ <b>%s — EPISODES (BY QUALITY)</b>", html.EscapeString(series.Title))
+			_ = b.sendChunkedMessages(c.Recipient(), header, epLines)
+		} else if len(series.Episodes) > 0 {
+			noEpMsg := fmt.Sprintf("ℹ️ <b>%s</b> has %d episodes discovered.\n\n👉 <i>Paste an episode's download link directly into the chat to resolve it to a direct HubCloud link!</i>", html.EscapeString(series.Title), len(series.Episodes))
+			_, _ = b.teleBot.Send(c.Recipient(), noEpMsg, tele.ModeHTML)
+		}
 	}
 
 	return nil
@@ -425,6 +430,9 @@ func qualityRank(q string) int {
 }
 
 func (b *Bot) sendChunkedMessages(recipient tele.Recipient, header string, lines []string) error {
+	if len(lines) == 0 {
+		return nil
+	}
 	var sb strings.Builder
 	sb.WriteString(header)
 	sb.WriteString("\n")
@@ -461,40 +469,42 @@ func (b *Bot) handleDownloadLinks(c tele.Context, matches []string) error {
 		msgID = int64(statusMsg.ID)
 	}
 
-	// 1. Try enqueuing to Render Rust Worker if available
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	// 1. Try enqueuing to Render Rust Worker if available (skip immediately if not configured)
+	if b.resolver.HasRustWorker() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-	enqueueResp, err := b.resolver.EnqueueBatchJob(ctx, matches, c.Chat().ID, msgID)
-	if err == nil && enqueueResp != nil {
-		// Case A: Instant cache hit for all links
-		if enqueueResp.AllCached && len(enqueueResp.Results) > 0 {
-			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("🎯 <b>Instant Cache Hit: %d Link(s)</b>\n\n", len(enqueueResp.Results)))
-			for i, res := range enqueueResp.Results {
-				dest := res.Destination
-				if strings.Contains(dest, "hubcloud") {
-					sb.WriteString(fmt.Sprintf("<b>#%d:</b> ⚡ <a href=\"%s\"><b>Direct HubCloud Link</b></a>\n<code>%s</code>\n\n", i+1, dest, dest))
+		enqueueResp, err := b.resolver.EnqueueBatchJob(ctx, matches, c.Chat().ID, msgID)
+		if err == nil && enqueueResp != nil {
+			// Case A: Instant cache hit for all links
+			if enqueueResp.AllCached && len(enqueueResp.Results) > 0 {
+				var sb strings.Builder
+				sb.WriteString(fmt.Sprintf("🎯 <b>Instant Cache Hit: %d Link(s)</b>\n\n", len(enqueueResp.Results)))
+				for i, res := range enqueueResp.Results {
+					dest := res.Destination
+					if strings.Contains(dest, "hubcloud") {
+						sb.WriteString(fmt.Sprintf("<b>#%d:</b> ⚡ <a href=\"%s\"><b>Direct HubCloud Link</b></a>\n<code>%s</code>\n\n", i+1, dest, dest))
+					}
 				}
+				if statusMsg != nil {
+					_, _ = b.teleBot.Edit(statusMsg, sb.String(), tele.ModeHTML)
+					return nil
+				}
+				return c.Send(sb.String(), tele.ModeHTML)
 			}
-			if statusMsg != nil {
-				_, _ = b.teleBot.Edit(statusMsg, sb.String(), tele.ModeHTML)
+
+			// Case B: Job successfully enqueued to cloud worker
+			if enqueueResp.Queued {
+				queuedText := fmt.Sprintf(
+					"⚡ <b>Job #%s Queued</b>\n\nResolving %d link(s) on Cloud Worker...\nProgress will update live as links finish.",
+					enqueueResp.JobID,
+					totalLinks,
+				)
+				if statusMsg != nil {
+					_, _ = b.teleBot.Edit(statusMsg, queuedText, tele.ModeHTML)
+				}
 				return nil
 			}
-			return c.Send(sb.String(), tele.ModeHTML)
-		}
-
-		// Case B: Job successfully enqueued to cloud worker
-		if enqueueResp.Queued {
-			queuedText := fmt.Sprintf(
-				"⚡ <b>Job #%s Queued</b>\n\nResolving %d link(s) on Cloud Worker...\nProgress will update live as links finish.",
-				enqueueResp.JobID,
-				totalLinks,
-			)
-			if statusMsg != nil {
-				_, _ = b.teleBot.Edit(statusMsg, queuedText, tele.ModeHTML)
-			}
-			return nil
 		}
 	}
 
@@ -592,8 +602,8 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 			ctx, cancel := context.WithTimeout(context.Background(), resolveTimeout)
 			defer cancel()
 
-			// 3. Re-check cache in case duplicate finished while waiting
-			if cachedDest, hit, err := b.cache.Get(ctx, rawURL); hit {
+			// 3. Re-check in-memory L1 cache in case duplicate finished while waiting (avoids duplicate remote L2/L3 work)
+			if cachedDest, hit, err := b.cache.GetL1(rawURL); hit {
 				atomic.AddInt32(&cacheHits, 1)
 				if errors.Is(err, cache.ErrDeadLink) {
 					results[idx] = resolver.Result{

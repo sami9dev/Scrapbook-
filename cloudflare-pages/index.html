@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HubCloud Stream & Link Resolver</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111726;
+      --card-border: #1e293b;
+      --card-hover: #172033;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --hubcloud: #10b981;
+      --hubcloud-glow: rgba(16, 185, 129, 0.25);
+      --hubcloud-hover: #059669;
+      --accent-blue: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.25);
+      --error: #ef4444;
+      --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 16px 80px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Ambient background glow */
+    body::before {
+      content: '';
+      position: absolute;
+      top: -120px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 750px;
+      height: 480px;
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.14) 0%, rgba(59, 130, 246, 0.08) 50%, transparent 80%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 900px;
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Header */
+    header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .logo-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 14px;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: var(--hubcloud);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      font-size: 2.6rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 10px;
+      background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      font-size: 1rem;
+      color: var(--text-muted);
+      max-width: 580px;
+      margin: 0 auto;
+      line-height: 1.5;
+    }
+
+    /* Input & Search Box */
+    .solver-box {
+      width: 100%;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 8px 10px 8px 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+      transition: all 0.2s ease;
+      margin-bottom: 14px;
+    }
+
+    .solver-box:focus-within {
+      border-color: var(--hubcloud);
+      box-shadow: 0 12px 35px -8px var(--hubcloud-glow), 0 0 0 1px var(--hubcloud);
+    }
+
+    .search-icon {
+      color: var(--text-muted);
+      font-size: 1.25rem;
+      display: flex;
+      align-items: center;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 1.05rem;
+      padding: 10px 0;
+    }
+
+    input[type="text"]::placeholder {
+      color: #64748b;
+    }
+
+    .btn-clear {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 50%;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s;
+    }
+
+    .btn-clear:hover { color: var(--text); }
+
+    .btn-paste {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 8px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .btn-paste:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text);
+    }
+
+    .btn-solve {
+      background: linear-gradient(135deg, var(--hubcloud) 0%, #059669 100%);
+      border: none;
+      color: #ffffff;
+      font-family: var(--font-sans);
+      font-size: 0.95rem;
+      font-weight: 700;
+      padding: 12px 22px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+    }
+
+    .btn-solve:hover {
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45);
+    }
+
+    .btn-solve:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* Sample Chips */
+    .sample-chips {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 26px;
+    }
+
+    .sample-label {
+      font-size: 0.78rem;
+      color: #64748b;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .chip {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .chip:hover {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #34d399;
+    }
+
+    /* Status Panel */
+    .status-panel {
+      width: 100%;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid rgba(16, 185, 129, 0.15);
+      border-top-color: var(--hubcloud);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .status-title {
+      font-weight: 700;
+      font-size: 1.05rem;
+      margin-bottom: 6px;
+    }
+
+    .status-desc {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    /* Results */
+    .results-container {
+      width: 100%;
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 30px;
+    }
+
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 4px;
+    }
+
+    .results-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge-count {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--hubcloud);
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    /* Section Headers */
+    .section-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #94a3b8;
+      margin-top: 10px;
+      margin-bottom: 4px;
+      padding-left: 2px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .release-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      transition: all 0.2s ease;
+    }
+
+    .release-card:hover {
+      background: var(--card-hover);
+      border-color: rgba(16, 185, 129, 0.3);
+    }
+
+    .release-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .release-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+
+    .badge-ep {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      padding: 2px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .badge-quality {
+      background: rgba(16, 185, 129, 0.12);
+      color: #34d399;
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      padding: 2px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+
+    .badge-size {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+    }
+
+    .release-filename {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .release-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-copy {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .btn-copy:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text);
+    }
+
+    .btn-download {
+      background: linear-gradient(135deg, var(--hubcloud) 0%, #059669 100%);
+      color: #ffffff;
+      text-decoration: none;
+      font-size: 0.82rem;
+      font-weight: 700;
+      padding: 8px 16px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+    }
+
+    .btn-download:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+    }
+
+    /* History Card */
+    .history-card {
+      width: 100%;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 18px 22px;
+      margin-top: 10px;
+    }
+
+    .history-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .history-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .history-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      font-size: 0.85rem;
+    }
+
+    .history-item-title {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 75%;
+    }
+
+    .history-item-link {
+      color: #34d399;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.8rem;
+    }
+
+    footer {
+      margin-top: 50px;
+      text-align: center;
+      font-size: 0.85rem;
+      color: #64748b;
+    }
+
+    footer a {
+      color: #38bdf8;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    @media (max-width: 640px) {
+      h1 { font-size: 2rem; }
+      .solver-box { flex-direction: column; padding: 12px; gap: 10px; }
+      input[type="text"] { width: 100%; }
+      .btn-solve { width: 100%; justify-content: center; }
+      .release-card { flex-direction: column; align-items: flex-start; gap: 12px; }
+      .release-actions { width: 100%; justify-content: flex-end; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo-badge">⚡ Cloudflare Edge Powered</div>
+      <h1>HubCloud Stream & Link Resolver</h1>
+      <p class="subtitle">Search movies/series or paste any XDMovies link. Get direct, ad-free HubCloud download buttons instantly.</p>
+    </header>
+
+    <div class="solver-box">
+      <div class="search-icon">🔍</div>
+      <input type="text" id="urlInput" placeholder="Paste XDMovies URL or search title (e.g. Criminal Justice, Ali Baba)..." autofocus>
+      <button class="btn-clear" id="btnClear" title="Clear input">✕</button>
+      <button class="btn-paste" id="btnPaste" title="Paste from clipboard">📋 Paste</button>
+      <button class="btn-solve" id="btnSolve">
+        <span>⚡ Solve Link</span>
+      </button>
+    </div>
+
+    <div class="sample-chips">
+      <span class="sample-label">Quick Try:</span>
+      <span class="chip" data-query="Ali Baba aur 40 Bhoot">🎬 Ali Baba (2026)</span>
+      <span class="chip" data-query="Criminal Justice">⚖️ Criminal Justice</span>
+      <span class="chip" data-query="Mirzapur">🔥 Mirzapur</span>
+      <span class="chip" data-query="https://link.xdmovies.wtf/download/wFib9D8gUijLqmlIX8lrfMPV1ggmISpRsZImVDeJg7Y">🔗 Sample Mediator</span>
+    </div>
+
+    <div class="status-panel" id="statusPanel">
+      <div class="spinner"></div>
+      <div class="status-title" id="statusTitle">Connecting...</div>
+      <div class="status-desc" id="statusDesc">Please wait a moment.</div>
+    </div>
+
+    <div class="results-container" id="resultsContainer">
+      <div class="results-header">
+        <div class="results-title">
+          <span id="resultsTitleText">Available Releases</span>
+          <span class="badge-count" id="resultsCountBadge">0 Links</span>
+        </div>
+      </div>
+      <div id="releasesList" style="display: flex; flex-direction: column; gap: 10px;"></div>
+    </div>
+
+    <div class="history-card" id="historyCard" style="display: none;">
+      <div class="history-header">
+        <span class="history-title">🕒 Recent Solved History</span>
+        <button class="btn-paste" id="btnClearHistory" style="padding: 4px 10px; font-size: 0.75rem;">Clear</button>
+      </div>
+      <div class="history-list" id="historyList"></div>
+    </div>
+
+    <footer>
+      Powered by Cloudflare Pages &bull; Live Bot on Telegram: <a href="https://t.me/Linkscrap_bot" target="_blank">@Linkscrap_bot</a>
+    </footer>
+  </div>
+
+  <script>
+    const API_BASE = 'https://scrapbook-0mrx.onrender.com';
+
+    const urlInput = document.getElementById('urlInput');
+    const btnClear = document.getElementById('btnClear');
+    const btnPaste = document.getElementById('btnPaste');
+    const btnSolve = document.getElementById('btnSolve');
+    const statusPanel = document.getElementById('statusPanel');
+    const statusTitle = document.getElementById('statusTitle');
+    const statusDesc = document.getElementById('statusDesc');
+    const resultsContainer = document.getElementById('resultsContainer');
+    const resultsTitleText = document.getElementById('resultsTitleText');
+    const resultsCountBadge = document.getElementById('resultsCountBadge');
+    const releasesList = document.getElementById('releasesList');
+    const historyCard = document.getElementById('historyCard');
+    const historyList = document.getElementById('historyList');
+    const btnClearHistory = document.getElementById('btnClearHistory');
+
+    // Load recent history
+    function loadHistory() {
+      const items = JSON.parse(localStorage.getItem('hubcloud_history') || '[]');
+      if (items.length === 0) {
+        historyCard.style.display = 'none';
+        return;
+      }
+      historyCard.style.display = 'block';
+      historyList.innerHTML = items.map(item => `
+        <div class="history-item">
+          <div class="history-item-title">${escapeHtml(item.title || item.filename || 'Resolved File')}</div>
+          <a class="history-item-link" href="${escapeHtml(item.url)}" target="_blank" rel="noopener">⚡ HubCloud ➔</a>
+        </div>
+      `).join('');
+    }
+
+    function saveToHistory(entry) {
+      let items = JSON.parse(localStorage.getItem('hubcloud_history') || '[]');
+      items = items.filter(i => i.url !== entry.url);
+      items.unshift(entry);
+      if (items.length > 8) items.pop();
+      localStorage.setItem('hubcloud_history', JSON.stringify(items));
+      loadHistory();
+    }
+
+    btnClearHistory.addEventListener('click', () => {
+      localStorage.removeItem('hubcloud_history');
+      loadHistory();
+    });
+
+    urlInput.addEventListener('input', () => {
+      btnClear.style.display = urlInput.value ? 'flex' : 'none';
+    });
+
+    btnClear.addEventListener('click', () => {
+      urlInput.value = '';
+      btnClear.style.display = 'none';
+      urlInput.focus();
+    });
+
+    btnPaste.addEventListener('click', async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          urlInput.value = text.trim();
+          btnClear.style.display = 'flex';
+          executeSolve();
+        }
+      } catch (err) {
+        urlInput.focus();
+      }
+    });
+
+    urlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') executeSolve();
+    });
+
+    btnSolve.addEventListener('click', executeSolve);
+
+    document.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        urlInput.value = chip.getAttribute('data-query');
+        btnClear.style.display = 'flex';
+        executeSolve();
+      });
+    });
+
+    async function executeSolve() {
+      const query = urlInput.value.trim();
+      if (!query) return;
+
+      resultsContainer.style.display = 'none';
+      statusPanel.style.display = 'block';
+      btnSolve.disabled = true;
+      statusTitle.textContent = 'Searching Pre-Indexed Catalogue...';
+      statusDesc.textContent = 'Checking in-memory and database indexes (<15ms)...';
+
+      const norm = query.toLowerCase().replace(/\/+$/, '');
+      let matched = [];
+
+      try {
+        // Path 1: Direct Mediator Link
+        if (norm.includes('link.xdmovies') || norm.includes('/download/')) {
+          statusTitle.textContent = 'Looking up mediator link...';
+          const res = await fetch(`${API_BASE}/api/links?mediatorUrl=${encodeURIComponent(query)}`);
+          if (res.ok) {
+            const data = await res.json();
+            matched = (data || []).filter(item => item.providerUrl && item.providerUrl.includes('hubcloud'));
+          }
+
+          if (matched.length === 0) {
+            statusTitle.textContent = 'Resolving Mediator Challenge...';
+            statusDesc.textContent = 'Solving Cloudflare challenge and getting direct HubCloud destination...';
+            const resolveRes = await fetch(`${API_BASE}/api/resolve-link`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mediatorUrl: query })
+            });
+            const resolveData = await resolveRes.json();
+            if (resolveData.success && resolveData.destination && resolveData.destination.includes('hubcloud')) {
+              renderResults([{
+                title: resolveData.title || 'Resolved File',
+                filename: resolveData.title || query,
+                quality: 'HD',
+                sizeDisplay: '',
+                providerUrl: resolveData.destination
+              }], query);
+              return;
+            }
+            throw new Error(resolveData.error || 'Could not resolve this mediator link.');
+          }
+        }
+        // Path 2: Series or Movie Landing URL
+        else if (norm.startsWith('http://') || norm.startsWith('https://')) {
+          statusTitle.textContent = 'Fetching Series / Movie Releases...';
+          const res = await fetch(`${API_BASE}/api/links?sourceUrl=${encodeURIComponent(query)}`);
+          if (res.ok) {
+            const data = await res.json();
+            matched = (data || []).filter(item => item.providerUrl && item.providerUrl.includes('hubcloud'));
+          }
+
+          // If not in DB, trigger auto-scrape
+          if (matched.length === 0) {
+            statusTitle.textContent = 'Scanning Series Releases...';
+            statusDesc.textContent = 'Analyzing landing page for available episodes...';
+            try {
+              const scrapeRes = await fetch(`${API_BASE}/api/scrape-page`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: query })
+              });
+              const scrapeData = await scrapeRes.json();
+              if (scrapeData.success && scrapeData.records) {
+                matched = (scrapeData.records || []).filter(item => item.providerUrl && item.providerUrl.includes('hubcloud'));
+              }
+            } catch (_) {}
+          }
+        }
+        // Path 3: Title Search (e.g. Criminal Justice, Ali Baba)
+        else {
+          statusTitle.textContent = 'Searching by Title...';
+          const res = await fetch(`${API_BASE}/api/links?titleSearch=${encodeURIComponent(query)}`);
+          if (res.ok) {
+            const data = await res.json();
+            matched = (data || []).filter(item => item.providerUrl && item.providerUrl.includes('hubcloud'));
+          }
+        }
+
+        // Render results
+        if (matched && matched.length > 0) {
+          renderResults(matched, query);
+        } else {
+          statusTitle.textContent = 'No Direct Links Available Yet';
+          statusDesc.innerHTML = `<span style="color: #f59e0b;">This title was discovered, but direct HubCloud links have not been solved yet.</span><br><br>👉 You can paste an episode's download link directly into <a href="https://t.me/Linkscrap_bot" target="_blank" style="color: #38bdf8; font-weight: 600;">@Linkscrap_bot</a> in Telegram to resolve it on-demand!`;
+        }
+      } catch (err) {
+        statusTitle.textContent = 'Resolution Notice';
+        statusDesc.innerHTML = `<span style="color: #ef4444;">${escapeHtml(err.message)}</span><br><br>💡 Try pasting individual download links or using <a href="https://t.me/Linkscrap_bot" target="_blank" style="color: #38bdf8; font-weight: 600;">@Linkscrap_bot</a>.`;
+      } finally {
+        btnSolve.disabled = false;
+      }
+    }
+
+    function renderResults(items, originalQuery) {
+      statusPanel.style.display = 'none';
+      resultsContainer.style.display = 'flex';
+
+      const rank = q => {
+        q = (q || '').toLowerCase();
+        if (q.includes('2160') || q.includes('4k')) return 40;
+        if (q.includes('1080')) return 30;
+        if (q.includes('720')) return 20;
+        if (q.includes('480')) return 10;
+        return 5;
+      };
+
+      items.sort((a, b) => {
+        if ((a.season || 0) !== (b.season || 0)) return (a.season || 0) - (b.season || 0);
+        if ((a.episode || 0) !== (b.episode || 0)) return (a.episode || 0) - (b.episode || 0);
+        return rank(b.quality) - rank(a.quality);
+      });
+
+      resultsCountBadge.textContent = `${items.length} HubCloud Link${items.length > 1 ? 's' : ''}`;
+      resultsTitleText.textContent = items[0].title ? items[0].title.split('.')[0].replace(/[-_]/g, ' ') : 'Available Releases';
+
+      releasesList.innerHTML = items.map((item, index) => {
+        const quality = (item.quality || 'HD').toUpperCase();
+        const size = item.sizeDisplay || '';
+        const name = item.filename || item.title || `Release #${index + 1}`;
+        const hubUrl = item.providerUrl;
+        const epLabel = (item.season && item.episode) ? `S${String(item.season).padStart(2,'0')}E${String(item.episode).padStart(2,'0')}` : (item.scope === 'pack' ? 'SEASON PACK' : '');
+
+        if (index === 0) {
+          saveToHistory({ title: name, url: hubUrl });
+        }
+
+        return `
+          <div class="release-card">
+            <div class="release-info">
+              <div class="release-meta">
+                ${epLabel ? `<span class="badge-ep">📺 ${escapeHtml(epLabel)}</span>` : ''}
+                <span class="badge-quality">⚡ ${escapeHtml(quality)}</span>
+                ${size ? `<span class="badge-size">💾 ${escapeHtml(size)}</span>` : ''}
+              </div>
+              <div class="release-filename" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+            </div>
+            <div class="release-actions">
+              <button class="btn-copy" onclick="copyLink('${escapeHtml(hubUrl)}', this)">
+                <span>📋 Copy</span>
+              </button>
+              <a class="btn-download" href="${escapeHtml(hubUrl)}" target="_blank" rel="noopener">
+                <span>⚡ Download</span>
+              </a>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function copyLink(url, btn) {
+      navigator.clipboard.writeText(url).then(() => {
+        const origText = btn.innerHTML;
+        btn.innerHTML = '<span>✅ Copied!</span>';
+        btn.style.borderColor = '#10b981';
+        btn.style.color = '#10b981';
+        setTimeout(() => {
+          btn.innerHTML = origText;
+          btn.style.borderColor = '';
+          btn.style.color = '';
+        }, 1800);
+      });
+    }
+
+    function escapeHtml(str) {
+      return (str || '').replace(/[&<>"']/g, m => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      })[m]);
+    }
+
+    loadHistory();
+  </script>
+</body>
+</html>

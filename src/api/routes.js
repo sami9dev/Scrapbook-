@@ -101,6 +101,154 @@ router.post('/scrape', async (req, res) => {
 });
 
 /**
+ * POST /api/scrape-page
+ * Fast-path HTTP catalogue scrape for movies/series pages without headless browser.
+ * Fetches page HTML directly via standard HTTP (max 8-10s).
+ * If Cloudflare challenge detected, fails fast without launching a browser.
+ * If release cards (.pack-card, .episode-card, .download-item) found, extracts and saves all releases.
+ */
+router.post('/scrape-page', async (req, res) => {
+  const { url } = req.body;
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'Field "url" is required and must be a string.' });
+  }
+
+  const targetUrl = url.trim();
+  const scrapeStart = Date.now();
+  logger.log('XDMovies', `[scrape-page] Starting fast-path HTTP fetch for: ${targetUrl}`);
+
+  try {
+    const fetchController = new AbortController();
+    const fetchTimeout = setTimeout(() => fetchController.abort(new Error('HTTP fetch timed out')), 9000);
+    fetchTimeout.unref?.();
+
+    let pageResponse;
+    try {
+      pageResponse = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cache-Control': 'no-cache',
+        },
+        signal: fetchController.signal,
+      });
+    } finally {
+      clearTimeout(fetchTimeout);
+    }
+
+    if (!pageResponse.ok && pageResponse.status !== 200) {
+      logger.log('XDMovies', `[scrape-page] HTTP status ${pageResponse.status} for ${targetUrl}`);
+      return res.json({
+        success: false,
+        challenge: pageResponse.status === 403 || pageResponse.status === 503,
+        error: `HTTP ${pageResponse.status}`,
+      });
+    }
+
+    const html = await pageResponse.text();
+
+    // Check for Cloudflare challenge markers
+    const isChallenge =
+      html.includes('Just a moment...') ||
+      html.includes('cf-turnstile') ||
+      html.includes('challenges.cloudflare.com') ||
+      html.includes('Attention Required! | Cloudflare');
+
+    if (isChallenge) {
+      logger.log('XDMovies', `[scrape-page] Cloudflare challenge detected on ${targetUrl}. Fast aborting without browser.`);
+      return res.json({
+        success: false,
+        challenge: true,
+        error: 'Cloudflare challenge page detected',
+      });
+    }
+
+    // Check if page contains catalogue cards
+    const hasCards =
+      html.includes('download-item') ||
+      html.includes('pack-card') ||
+      html.includes('episode-card') ||
+      html.includes('custom-title') ||
+      html.includes('episode-title');
+
+    if (!hasCards) {
+      logger.log('XDMovies', `[scrape-page] No release cards found in HTML for ${targetUrl}`);
+      return res.json({
+        success: false,
+        challenge: false,
+        error: 'No release cards found in page HTML',
+      });
+    }
+
+    const { parseXDMoviesCatalogue } = await import('../scrapers/xdmovies/catalogue.js');
+    const { isHubCloudDriveUrl, extractHubCloudDriveId } = await import('../providers/hubcloud/validator.js');
+    const { recordInCatalog } = await import('../utils/catalog-store.js');
+
+    const catalogue = parseXDMoviesCatalogue(html, targetUrl);
+    const isMoviePage = catalogue.type === 'movie';
+
+    recordInCatalog({
+      title: catalogue.title || 'XDMovies Content',
+      url: targetUrl,
+      format: isMoviePage ? 'Movie' : 'Series',
+      platform: 'XDMovies',
+    });
+
+    const savedRecords = [];
+    if (catalogue && catalogue.qualities) {
+      for (const q of catalogue.qualities) {
+        for (const rel of q.releases) {
+          for (const dl of (rel.downloadLinks || [])) {
+            const rawLink = dl.url;
+            const isDirectHubCloud = isHubCloudDriveUrl(rawLink) || /hubcloud\.[a-z0-9.]+/i.test(rawLink);
+            const providerUrl = isDirectHubCloud ? rawLink : null;
+            const mediatorUrl = isDirectHubCloud ? null : rawLink;
+            const fileId = isDirectHubCloud ? extractHubCloudDriveId(rawLink) : null;
+            const status = isDirectHubCloud ? 'RESOLVED' : 'DISCOVERED';
+
+            const docToSave = {
+              sourceUrl: targetUrl,
+              sourceDomain: new URL(targetUrl).hostname,
+              title: rel.label || catalogue.title,
+              filename: rel.label || catalogue.title,
+              scope: rel.scope || (isMoviePage ? 'movie' : 'episode'),
+              season: isMoviePage ? null : (rel.season ?? 1),
+              episode: isMoviePage ? null : (rel.episode ?? null),
+              quality: rel.quality?.normalized || rel.resolution || 'unknown',
+              codec: rel.codec || null,
+              sizeDisplay: rel.fileSize || null,
+              provider: isDirectHubCloud ? 'HUBCLOUD' : (dl.provider || 'XDMovies Link'),
+              providerUrl,
+              mediatorUrl,
+              fileId,
+              status,
+            };
+
+            const saved = await scrapedLinksRepo.saveLink(docToSave);
+            savedRecords.push(saved);
+          }
+        }
+      }
+    }
+
+    logger.log('TIMING', `[catalogue-query] fast-path scrape url=${targetUrl} totalReleases=${savedRecords.length} took=${Date.now() - scrapeStart}ms`);
+
+    return res.json({
+      success: true,
+      challenge: false,
+      title: catalogue.title,
+      type: catalogue.type,
+      totalReleases: savedRecords.length,
+      records: savedRecords,
+    });
+  } catch (err) {
+    logger.error(`[scrape-page] Fast-path error: ${err.message}`);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
  * GET /api/search?q=<query>
  * Searches 4KHDHub for matching movie or series titles.
  */
@@ -386,15 +534,64 @@ router.get('/links', async (req, res) => {
       query.season = parseInt(req.query.season, 10);
     }
 
+    if (req.query.sourceUrl) {
+      const sUrl = req.query.sourceUrl.trim();
+      const withoutSlash = sUrl.replace(/\/+$/, '');
+      const withSlash = withoutSlash + '/';
+      query.sourceUrl = { $in: [withoutSlash, withSlash] };
+    }
+    if (req.query.mediatorUrl) {
+      query.mediatorUrl = req.query.mediatorUrl.trim();
+    }
+    if (req.query.titleSearch) {
+      const term = req.query.titleSearch.trim();
+      const safeRegex = new RegExp(term.replace(/[.*+?^\$\{\}()|[\]\\]/g, '\\$&'), 'i');
+      query.$or = [
+        { normalizedTitle: safeRegex },
+        { title: safeRegex },
+        { filename: safeRegex },
+      ];
+    }
+
+    const queryStart = Date.now();
     let links = await scrapedLinksRepo.find(query, {
       sort: { createdAt: -1 },
       limit,
     });
+    logger.log('TIMING', `[catalogue-query] filter=${JSON.stringify(Object.keys(query))} limit=${limit} results=${links.length} took=${Date.now() - queryStart}ms`);
 
     // Exclude intermediate mediator URLs and DotFlix (only genuine GDFLIX/HubCloud)
     links = links.filter((l) => !(l.providerUrl && l.providerUrl.includes('greenmotors')) && !/dtflix|dotflix/i.test(l.providerUrl || ''));
 
     return res.json(links);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/links/lookup-title?mediatorUrl=<url>&providerUrl=<url>
+ * Lightweight targeted title lookup for Go bot — avoids full catalogue fetch.
+ */
+router.get('/links/lookup-title', async (req, res) => {
+  try {
+    const { mediatorUrl: mu, providerUrl: pu } = req.query;
+    if (!mu && !pu) {
+      return res.status(400).json({ error: 'mediatorUrl or providerUrl is required.' });
+    }
+    const lookupStart = Date.now();
+    let link = null;
+    if (mu) {
+      const found = await scrapedLinksRepo.find({ mediatorUrl: mu.trim() }, { limit: 1 });
+      if (found && found.length > 0) link = found[0];
+    }
+    if (!link && pu) {
+      const found = await scrapedLinksRepo.find({ providerUrl: pu.trim() }, { limit: 1 });
+      if (found && found.length > 0) link = found[0];
+    }
+    logger.log('TIMING', `[lookup-title] took=${Date.now() - lookupStart}ms hit=${!!link}`);
+    if (!link) return res.json({ title: '', filename: '' });
+    return res.json({ title: link.title || '', filename: link.filename || '' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -1245,48 +1442,59 @@ router.post('/resolve-link', async (req, res) => {
     if (signal.aborted || res.destroyed) return;
 
     if (resolution.success && resolution.destination) {
-      let finalTitle = resolution.meta?.filename || resolution.meta?.title;
-      if (!finalTitle || finalTitle === link?.title || finalTitle === 'Unknown Title') {
-        const hubMeta = await fetchHubCloudMetadata(resolution.destination).catch(() => null);
-        if (hubMeta?.filename) {
-          finalTitle = hubMeta.filename;
-        }
-      }
-      if (signal.aborted || res.destroyed) return;
-
-      if (link) {
-        link.providerUrl = resolution.destination;
-        link.fileId = extractHubCloudDriveId(resolution.destination);
-        link.status = 'RESOLVED';
-        if (finalTitle) {
-          link.filename = finalTitle;
-          link.title = finalTitle;
-        }
-        await scrapedLinksRepo.saveLink(link);
-      } else {
-        // Auto-persist newly resolved standalone mediator link into catalogue!
-        const driveId = extractHubCloudDriveId(resolution.destination);
-        const autoDoc = {
-          sourceUrl: urlToResolve,
-          sourceDomain: 'link.xdmovies.wtf',
-          title: finalTitle || 'Movie Release',
-          filename: finalTitle || '',
-          scope: 'movie',
-          provider: 'HUBCLOUD',
-          providerUrl: resolution.destination,
-          mediatorUrl: urlToResolve,
-          fileId: driveId,
-          status: 'RESOLVED',
-        };
-        await scrapedLinksRepo.saveLink(autoDoc).catch(() => {});
-      }
-      return res.json({
+      // [OPT-5] Return resolved destination immediately to Telegram bot
+      const driveId = extractHubCloudDriveId(resolution.destination);
+      const earlyTitle = resolution.meta?.filename || resolution.meta?.title || link?.filename || link?.title || '';
+      res.json({
         success: true,
         destination: resolution.destination,
-        driveId: extractHubCloudDriveId(resolution.destination),
+        driveId,
         state: resolution.state,
-        title: link?.filename || link?.title || finalTitle || '',
+        title: earlyTitle,
       });
+
+      // Background: enrich metadata and save to DB without blocking caller
+      setImmediate(async () => {
+        const metaStart = Date.now();
+        try {
+          let finalTitle = earlyTitle;
+          if (!finalTitle || finalTitle === 'Unknown Title') {
+            const hubMeta = await fetchHubCloudMetadata(resolution.destination).catch(() => null);
+            if (hubMeta?.filename) {
+              finalTitle = hubMeta.filename;
+            }
+          }
+          logger.log('TIMING', `[metadata enrichment] destination=${resolution.destination} took=${Date.now() - metaStart}ms title="${finalTitle}"`);
+
+          if (link) {
+            link.providerUrl = resolution.destination;
+            link.fileId = driveId;
+            link.status = 'RESOLVED';
+            if (finalTitle) {
+              link.filename = finalTitle;
+              link.title = finalTitle;
+            }
+            await scrapedLinksRepo.saveLink(link);
+          } else {
+            const autoDoc = {
+              sourceUrl: urlToResolve,
+              sourceDomain: 'link.xdmovies.wtf',
+              title: finalTitle || 'Movie Release',
+              filename: finalTitle || '',
+              scope: 'movie',
+              provider: 'HUBCLOUD',
+              providerUrl: resolution.destination,
+              mediatorUrl: urlToResolve,
+              fileId: driveId,
+              status: 'RESOLVED',
+            };
+            await scrapedLinksRepo.saveLink(autoDoc).catch(() => {});
+          }
+        } catch (bgErr) {
+          logger.error(`[resolve-link BG] enrichment error: ${bgErr.message}`);
+        }
+      });
+      return;
     } else {
       if (link) {
         link.status = resolution.state === 'CAPTCHA_REQUIRED' ? 'HUMAN_VERIFICATION_REQUIRED' : 'ERROR';

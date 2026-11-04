@@ -89,18 +89,14 @@ async function resolveXDMoviesMediatorUnlocked(mediatorUrl, options = {}) {
   });
   if (signal?.aborted) return cancelledResult();
 
-  // If already a HubCloud URL, return canonical URL immediately
+  // If already a HubCloud URL, return canonical URL immediately (no synchronous metadata block)
   if (isHubCloudDriveUrl(normalizedUrl)) {
     const canonical = canonicalHubCloudUrl(normalizedUrl);
-    let metadata = null;
-    try {
-      metadata = await fetchHubCloudMetadata(canonical);
-    } catch {}
     return {
       success: true,
       destination: canonical,
       error: null,
-      metadata,
+      metadata: null,
       elapsedMs: Date.now() - startedAt,
     };
   }
@@ -112,10 +108,13 @@ async function resolveXDMoviesMediatorUnlocked(mediatorUrl, options = {}) {
   let browser = options.existingBrowser || null;
   let ownBrowser = false;
 
-  logger.log('XDMovies', `[XDMovies Mediator] Starting resolution for: ${normalizedUrl}`);
+  // [OPT-3] One resolver strategy per request — avoids sequential Scrapling + Chromium attempts
+  const chosenStrategy = options.strategy || process.env.RESOLVER_STRATEGY || (options.existingBrowser ? 'chromium' : 'scrapling');
+  logger.log('TIMING', `[resolver choice] strategy=${chosenStrategy} url=${normalizedUrl}`);
+  logger.log('XDMovies', `[XDMovies Mediator] Starting resolution for: ${normalizedUrl} using strategy: ${chosenStrategy}`);
 
-  // Primary stealth resolver: Scrapling headless resolver
-  if (headless && !options.existingBrowser) {
+  // Strategy A: Scrapling stealth headless resolver
+  if (chosenStrategy === 'scrapling' && !options.existingBrowser) {
     try {
       logger.log('XDMovies', `[XDMovies Mediator] Resolving via Scrapling Stealth (Headless)...`);
       const scrapResult = await new Promise((resolve) => {
@@ -144,6 +143,7 @@ async function resolveXDMoviesMediatorUnlocked(mediatorUrl, options = {}) {
           {
             windowsHide: true,
             detached: process.platform !== 'win32',
+            timeout: 80000, // Kill child before 90s hard deadline
           },
           (error, stdout, stderr) => {
             signal?.removeEventListener('abort', onAbort);
@@ -171,7 +171,7 @@ async function resolveXDMoviesMediatorUnlocked(mediatorUrl, options = {}) {
       if (signal?.aborted) return cancelledResult();
 
       if (scrapResult && scrapResult.isDead) {
-        logger.log('XDMovies', `[XDMovies Mediator] Dead link detected early (${scrapResult.error}). Fast aborting without browser fallback.`);
+        logger.log('XDMovies', `[XDMovies Mediator] Dead link detected (${scrapResult.error}). Fast aborting.`);
         return {
           success: false,
           isDead: true,
@@ -183,22 +183,32 @@ async function resolveXDMoviesMediatorUnlocked(mediatorUrl, options = {}) {
 
       if (scrapResult && scrapResult.success && scrapResult.destination) {
         const dest = canonicalHubCloudUrl(scrapResult.destination);
-        let metadata = null;
-        try {
-          metadata = await fetchHubCloudMetadata(dest);
-        } catch {}
         return {
           success: true,
           destination: dest,
           error: null,
-          metadata,
+          metadata: scrapResult.metadata || null,
           elapsedMs: Date.now() - startedAt,
         };
       }
-      logger.log('XDMovies', `[XDMovies Mediator] Scrapling returned: ${scrapResult?.error || 'unsuccessful'}. Trying fallback...`);
+
+      // [OPT-3] Return Scrapling failure directly without running Chromium sequentially
+      return {
+        success: false,
+        destination: null,
+        error: scrapResult?.error || 'Scrapling resolution failed to reach HubCloud destination',
+        metadata: null,
+        elapsedMs: Date.now() - startedAt,
+      };
     } catch (scrapErr) {
       if (signal?.aborted) return cancelledResult();
-      logger.log('XDMovies', `[XDMovies Mediator] Scrapling invocation error: ${scrapErr.message}. Trying fallback...`);
+      return {
+        success: false,
+        destination: null,
+        error: `Scrapling execution failed: ${scrapErr.message}`,
+        metadata: null,
+        elapsedMs: Date.now() - startedAt,
+      };
     }
   }
 
@@ -577,19 +587,11 @@ async function resolveXDMoviesMediatorUnlocked(mediatorUrl, options = {}) {
 
     logger.log('XDMovies', `[XDMovies Mediator] Successfully reached HubCloud: ${finalDestination}`);
 
-    // Retrieve HubCloud file metadata
-    let metadata = null;
-    try {
-      metadata = await fetchHubCloudMetadata(finalDestination);
-    } catch {
-      // Non-fatal
-    }
-
     return {
       success: true,
       destination: finalDestination,
       error: null,
-      metadata,
+      metadata: null,
       elapsedMs: Date.now() - startedAt,
     };
   } catch (err) {
