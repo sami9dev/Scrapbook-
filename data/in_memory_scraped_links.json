@@ -13307,5 +13307,57 @@
     "dedupeKey": "https://huh.xdmovies.wtf/series/ali-baba-aur-40-bhoot-2160p-1080p-hindi-tamil-download-331932::https://link.xdmovies.wtf/download/MPQG2-RiuWOyQHqvN2u9e_LH5JFCrgpB2sQ71HPU23k",
     "createdAt": "2026-11-04T05:45:56.017Z",
     "updatedAt": "2026-11-04T05:45:56.017Z"
+  },
+  {
+    "sourceUrl": "https://huh.xdmovies.wtf/series/special-ops-15-the-himmat-story-2160p-1080p-hindi-tamil-download-138396",
+    "title": "Special.Ops.1.5.S01.1080p.JHS.WEB-DL.MULTi.DDP5.1.H.264-XDMovies.zip",
+    "providerUrl": "https://hubcloud.ist/drive/sw3h3phh8kdkhk9",
+    "destination": "https://hubcloud.ist/drive/sw3h3phh8kdkhk9",
+    "mediatorUrl": "https://link.xdmovies.wtf/download/9GoXHJunESjUl814AHrXbLt13TMJbN_MY51r3bm6uDA",
+    "sizeDisplay": "5.13 GB",
+    "quality": "1080p",
+    "provider": "hubcloud",
+    "status": "active",
+    "scope": "series",
+    "type": "pack"
+  },
+  {
+    "sourceUrl": "https://huh.xdmovies.wtf/series/special-ops-15-the-himmat-story-2160p-1080p-hindi-tamil-download-138396",
+    "title": "Special.Ops.1.5.S01.2160p.JHS.WEB-DL.MULTi.DDP5.1.H.265-XDMovies.zip",
+    "providerUrl": "https://hubcloud.ist/drive/ux7uyhmd1mgujgu",
+    "destination": "https://hubcloud.ist/drive/ux7uyhmd1mgujgu",
+    "mediatorUrl": "https://link.xdmovies.wtf/download/XTilsQI9iAnmFy-LFtnjQcA_UY3GBfmDfohcAJMFmO0",
+    "sizeDisplay": "25.14 GB",
+    "quality": "2160p",
+    "provider": "hubcloud",
+    "status": "active",
+    "scope": "series",
+    "type": "pack"
+  },
+  {
+    "sourceUrl": "https://huh.xdmovies.wtf/series/special-ops-15-the-himmat-story-2160p-1080p-hindi-tamil-download-138396",
+    "title": "Special.Ops.1.5.S01.1080p.JHS.WEB-DL.MULTi.DDP5.1.H.265-XDMovies.zip",
+    "providerUrl": "https://hubcloud.ist/drive/jalacyjcha2t3ap",
+    "destination": "https://hubcloud.ist/drive/jalacyjcha2t3ap",
+    "mediatorUrl": "https://link.xdmovies.wtf/download/1Mr0Sl1HHShAo5McSE0E8TIYQaJTKF5vq3QvYiSjAY0",
+    "sizeDisplay": "8.38 GB",
+    "quality": "1080p",
+    "provider": "hubcloud",
+    "status": "active",
+    "scope": "series",
+    "type": "pack"
+  },
+  {
+    "sourceUrl": "https://huh.xdmovies.wtf/series/special-ops-15-the-himmat-story-2160p-1080p-hindi-tamil-download-138396",
+    "title": "Special.Ops.1.5.S01.720p.JHS.WEB-DL.MULTi.DDP5.1.H.264-XDMovies.zip",
+    "providerUrl": "https://hubcloud.ist/drive/kxtgveekurzr5rk",
+    "destination": "https://hubcloud.ist/drive/kxtgveekurzr5rk",
+    "mediatorUrl": "https://link.xdmovies.wtf/download/mAtNEBaIBxc4q-VQkgYN7noTk3Ap84dkyKMaNnvLWI8",
+    "sizeDisplay": "2.73 GB",
+    "quality": "720p",
+    "provider": "hubcloud",
+    "status": "active",
+    "scope": "series",
+    "type": "pack"
   }
 ]
