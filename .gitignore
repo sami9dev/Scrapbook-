@@ -17,3 +17,8 @@ dist/
 data/in_memory_scrape_jobs.json
 scratch/
 .ua/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example

@@ -11,7 +11,9 @@
     "format": "node src/cli.js",
     "collect-links": "node src/tools/link-collector/cli.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "keywords": [
     "scraper",
@@ -35,7 +37,8 @@
     "@types/node": "^26.6.3",
     "playwright": "^1.50.0",
     "typescript": "^7.0.2",
-    "vitest": "^3.0.7"
+    "vitest": "^3.0.7",
+    "wrangler": "^4.157.0"
   },
   "engines": {
     "node": ">=20.0.0"
