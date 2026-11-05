@@ -72,6 +72,18 @@ class InMemoryCollection {
   find(query = {}) {
     let docs = this.documents.filter((doc) => {
       return Object.entries(query).every(([k, v]) => {
+        if (k === '$or' && Array.isArray(v)) {
+          return v.some((subQuery) => {
+            return Object.entries(subQuery).every(([sk, sv]) => {
+              if (sv instanceof RegExp) return sv.test(doc[sk] || '');
+              if (sv && typeof sv === 'object' && sv.$regex) {
+                const re = sv.$regex instanceof RegExp ? sv.$regex : new RegExp(sv.$regex, sv.$options || 'i');
+                return re.test(doc[sk] || '');
+              }
+              return doc[sk] === sv;
+            });
+          });
+        }
         if (v && typeof v === 'object') {
           if (v.$in !== undefined && Array.isArray(v.$in)) {
             return v.$in.includes(doc[k]);
