@@ -11,7 +11,7 @@ const PORT = 3000;
 const LOG_FILE = path.join(__dirname, 'scraper-daemon.log');
 
 function log(msg) {
-  const line = `[${new Date().toISOString()}] [SAFE-DAEMON] ${msg}\n`;
+  const line = `[${new Date().toISOString()}] [PERMANENT-DAEMON] ${msg}\n`;
   try {
     fs.appendFileSync(LOG_FILE, line, 'utf8');
   } catch {}
@@ -41,25 +41,12 @@ let childProc = null;
 let shouldRestart = true;
 
 async function startSafeSupervisor() {
-  if (process.env.ENABLE_LOCAL_SCRAPER !== 'true') {
-    log('Local browser-heavy scraper worker is disabled on Windows to prevent PC freezing.');
-    log('All link resolution and scraping jobs run asynchronously on the Render cloud worker.');
-    return;
-  }
-
-  const inUse = await isPortInUse(PORT);
-  if (inUse) {
-    log(`Port ${PORT} is already active.`);
-    return;
-  }
-
-  log(`Starting single resource-guarded Scraper on port ${PORT} (Protects Windows PC from freezing)...`);
+  log(`Permanent localhost daemon supervisor initiated for port ${PORT}...`);
 
   function runChild() {
     if (!shouldRestart) return;
 
     const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
-    // Enforce safe single-worker limits to keep Windows smooth and responsive
     const childEnv = {
       ...process.env,
       PORT: PORT.toString(),
@@ -75,32 +62,52 @@ async function startSafeSupervisor() {
       windowsHide: true,
     });
 
-    log(`Spawned safe scraper process (PID: ${childProc.pid})`);
+    log(`Spawned permanent server & Go bot process (PID: ${childProc.pid})`);
 
     childProc.stdout.on('data', (data) => logStream.write(data));
     childProc.stderr.on('data', (data) => logStream.write(data));
 
     childProc.on('exit', (code, signal) => {
-      log(`Scraper exited with code=${code}, signal=${signal}`);
+      log(`Server process exited with code=${code}, signal=${signal}`);
       childProc = null;
       if (shouldRestart) {
-        log('Auto-restarting in 2 seconds...');
+        log('Auto-restarting server in 2 seconds...');
         setTimeout(runChild, 2000);
       }
     });
 
     childProc.on('error', (err) => {
-      log(`Error: ${err.message}`);
+      log(`Child process error: ${err.message}`);
       if (shouldRestart) {
         setTimeout(runChild, 3000);
       }
     });
   }
 
+  // If port is already active from an old zombie instance, let it be or monitor
+  const inUse = await isPortInUse(PORT);
+  if (inUse) {
+    log(`Port ${PORT} is currently active. Monitoring port health...`);
+    const interval = setInterval(async () => {
+      if (!shouldRestart) {
+        clearInterval(interval);
+        return;
+      }
+      const active = await isPortInUse(PORT);
+      if (!active) {
+        clearInterval(interval);
+        log(`Port ${PORT} went down. Spawning supervisor child process now...`);
+        runChild();
+      }
+    }, 5000);
+    return;
+  }
+
   runChild();
 }
 
 function shutdown() {
+  log('Shutting down permanent daemon supervisor...');
   shouldRestart = false;
   if (childProc) {
     try {
