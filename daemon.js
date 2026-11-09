@@ -84,23 +84,17 @@ async function startSafeSupervisor() {
     });
   }
 
-  // If port is already active from an old zombie instance, let it be or monitor
+  // Clear any zombie process holding the port before spawning child
   const inUse = await isPortInUse(PORT);
   if (inUse) {
-    log(`Port ${PORT} is currently active. Monitoring port health...`);
-    const interval = setInterval(async () => {
-      if (!shouldRestart) {
-        clearInterval(interval);
-        return;
+    log(`Port ${PORT} is held by a prior process. Freeing port before launch...`);
+    try {
+      const { execSync } = await import('node:child_process');
+      if (process.platform === 'win32') {
+        execSync(`powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort ${PORT} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"`);
       }
-      const active = await isPortInUse(PORT);
-      if (!active) {
-        clearInterval(interval);
-        log(`Port ${PORT} went down. Spawning supervisor child process now...`);
-        runChild();
-      }
-    }, 5000);
-    return;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 1200));
   }
 
   runChild();
