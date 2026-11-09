@@ -82,10 +82,11 @@ Powered by Go Goroutines, Channels, and In-Memory Caching:
 • <b>Microsecond Cache:</b> Stored links return in &lt;1ms.
 
 👉 <b>Try sending:</b>
-1. A Movie page:
-<code>https://huh.xdmovies.wtf/movies/runner-1080p-720p-hindi-english-download-1377237</code>
-2. A Series page:
-<code>https://huh.xdmovies.wtf/series/sacred-games-2160p-1080p-hindi-download-79352</code>`
+1. Any Movie or Series title: <code>The Good Lawyer</code> or <code>Avatar</code>
+2. A 4KHDHub / 4KHub4U Movie link:
+<code>https://4khdhub.one/the-good-lawyer-movie-8524/</code>
+3. A 4KHDHub / 4KHub4U Series link:
+<code>https://4khdhub.one/dexter-resurrection-series-2297/</code>`
 	return c.Send(msg, tele.ModeHTML)
 }
 
@@ -208,8 +209,8 @@ func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
 
 	if err != nil {
 		log.Printf("[Bot] GetSeriesReleases error: %v", err)
-		errMsg := fmt.Sprintf("ℹ️ <b>Title Not Yet In Pre-Indexed Catalogue</b>\n\nThe landing page (<code>%s</code>) is protected by Cloudflare Turnstile, so automated scraping is paused.\n\n👉 <b>How to get your direct HubCloud links:</b>\n1. Open the page in your browser: <a href=\"%s\">%s</a>\n2. Copy the download link(s) on that page (e.g. <code>https://link.xdmovies.wtf/download/...</code>)\n3. Paste the download link(s) here — the bot will resolve each one to a direct <b>HubCloud</b> link!",
-			html.EscapeString(contentURL), html.EscapeString(contentURL), html.EscapeString(contentURL))
+		errMsg := fmt.Sprintf("❌ <b>Could not retrieve releases for:</b>\n<code>%s</code>\n\n<i>Reason: %s</i>\n\n👉 <i>Try sending another 4KHub4U link or movie/series title!</i>",
+			html.EscapeString(contentURL), html.EscapeString(err.Error()))
 		if statusMsg != nil {
 			if _, editErr := b.teleBot.Edit(statusMsg, errMsg, tele.ModeHTML); editErr != nil {
 				log.Printf("[Bot] Failed to edit statusMsg: %v. Sending direct message...", editErr)
@@ -242,7 +243,10 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 
 		for _, m := range series.Episodes {
 			dest := m.ProviderURL
-			if !strings.Contains(dest, "hubcloud") {
+			if dest == "" {
+				dest = m.MediatorURL
+			}
+			if dest == "" {
 				continue
 			}
 			cat, rank := getReleaseCategory(m.Filename, m.Quality)
@@ -330,7 +334,10 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 	// 1. Add all Season Packs
 	for _, p := range series.Packs {
 		dest := p.ProviderURL
-		if !strings.Contains(dest, "hubcloud") {
+		if dest == "" {
+			dest = p.MediatorURL
+		}
+		if dest == "" {
 			continue
 		}
 		sg := getOrCreateSeason(p.Season)
@@ -341,7 +348,10 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 	// 2. Add all Episodes
 	for _, ep := range series.Episodes {
 		dest := ep.ProviderURL
-		if !strings.Contains(dest, "hubcloud") {
+		if dest == "" {
+			dest = ep.MediatorURL
+		}
+		if dest == "" {
 			continue
 		}
 		sg := getOrCreateSeason(ep.Season)
@@ -381,6 +391,9 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 						name = p.Title
 					}
 					dest := p.ProviderURL
+					if dest == "" {
+						dest = p.MediatorURL
+					}
 					sizeStr := p.SizeDisplay
 					sizeLine := ""
 					if sizeStr != "" {
@@ -403,6 +416,9 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 						name = ep.Title
 					}
 					dest := ep.ProviderURL
+					if dest == "" {
+						dest = ep.MediatorURL
+					}
 					sizeStr := ep.SizeDisplay
 					sizeLine := ""
 					if sizeStr != "" {

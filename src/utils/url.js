@@ -167,6 +167,12 @@ export function validateUrl(inputUrl, options = {}) {
   if (allowed.length > 0) {
     const isAllowed = allowed.some((domain) => {
       const d = domain.toLowerCase();
+      if (/^(?:[a-z0-9-]+\.)?(?:4khub4u|4khdhub|hdhub4u)\.[a-z0-9.]+$/i.test(hostname)) {
+        return true;
+      }
+      if (/^(?:[a-z0-9-]+\.)?greenmotors\.[a-z0-9.]+$/i.test(hostname)) {
+        return true;
+      }
       if (d === 'hubcloud' || d === 'hubcloud.*' || d.startsWith('hubcloud.')) {
         if (/^(?:[a-z0-9-]+\.)?hubcloud\.[a-z]{2,}$/i.test(hostname)) {
           return true;

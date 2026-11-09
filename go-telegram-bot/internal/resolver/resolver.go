@@ -110,7 +110,15 @@ func (r *Resolver) Timeout() time.Duration {
 // IsContentPage returns true if the URL is a series or movie landing page rather than a download mediator
 func (r *Resolver) IsContentPage(rawURL string) bool {
 	lower := strings.ToLower(rawURL)
-	return (strings.Contains(lower, "/series/") || strings.Contains(lower, "/movies/")) && !strings.Contains(lower, "/download/")
+	if (strings.Contains(lower, "/series/") || strings.Contains(lower, "/movies/") || strings.Contains(lower, "/movie/")) && !strings.Contains(lower, "/download/") {
+		return true
+	}
+	if strings.Contains(lower, "4khdhub.") || strings.Contains(lower, "4khub4u.") || strings.Contains(lower, "hdhub4u.") {
+		if !strings.Contains(lower, "/download/") && !strings.Contains(lower, "/?s=") {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Resolver) fetchAllStoredLinks(ctx context.Context) []StoredLink {
@@ -209,7 +217,7 @@ func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*Serie
 		return nil, errors.New("title is not yet cached. Please allow the Render cloud worker to complete scraping.")
 	}
 
-	isMovie := strings.Contains(strings.ToLower(rawURL), "/movies/") || matched[0].Scope == "movie"
+	isMovie := strings.Contains(strings.ToLower(rawURL), "/movies/") || strings.Contains(strings.ToLower(rawURL), "/movie/") || strings.Contains(strings.ToLower(rawURL), "-movie-") || strings.Contains(strings.ToLower(rawURL), "-movie/") || (len(matched) > 0 && matched[0].Scope == "movie")
 
 	sr := &SeriesResult{
 		Title:   extractDisplayTitle(matched[0].Title),
@@ -266,7 +274,13 @@ func (r *Resolver) SearchByTitle(ctx context.Context, titleQuery string) (*Serie
 	log.Printf("[TIMING] catalogue-query titleSearch=%s results=%d took=%v", normQuery, len(matched), time.Since(catStart))
 
 	if len(matched) == 0 {
-		return nil, fmt.Errorf("no pre-indexed title matching '<b>%s</b>'.\n\n👉 <i>Or send the full XDMovies page link to resolve!</i>",
+		if sr, err := r.searchViaAPI(ctx, normQuery); err == nil && sr != nil && sr.Total > 0 {
+			log.Printf("[Dynamic Search] Retrieved %d releases for '%s'", sr.Total, normQuery)
+			return sr, nil
+		} else if err != nil {
+			log.Printf("[Dynamic Search] error: %v", err)
+		}
+		return nil, fmt.Errorf("no title matching '<b>%s</b>'.\n\n👉 <i>Send a 4KHub4U page link or try another title!</i>",
 			html.EscapeString(titleQuery))
 	}
 
@@ -302,7 +316,7 @@ func extractSlug(urlStr string) string {
 func extractSlugTitle(slug string) string {
 	slug = strings.ToLower(slug)
 	// Remove trailing ID digits if any
-	for _, sep := range []string{"-2160p", "-1080p", "-720p", "-480p", "-download", "-hindi", "-tamil", "-telugu"} {
+	for _, sep := range []string{"-2160p", "-1080p", "-720p", "-480p", "-download", "-hindi", "-tamil", "-telugu", "-movie-", "-series-", "-movie", "-series"} {
 		if idx := strings.Index(slug, sep); idx != -1 {
 			slug = slug[:idx]
 		}
@@ -922,4 +936,62 @@ func (r *Resolver) scrapeViaFastPath(ctx context.Context, rawURL string) (*Serie
 	}
 
 	return sr, nil
+}
+
+type searchAPIResultItem struct {
+	Title    string `json:"title"`
+	URL      string `json:"url"`
+	IsMovie  bool   `json:"isMovie"`
+	IsSeries bool   `json:"isSeries"`
+}
+
+type searchAPIResponse struct {
+	Success   bool                  `json:"success"`
+	Query     string                `json:"query"`
+	BestMatch *searchAPIResultItem  `json:"bestMatch"`
+	Results   []searchAPIResultItem `json:"results"`
+}
+
+func (r *Resolver) searchViaAPI(ctx context.Context, titleQuery string) (*SeriesResult, error) {
+	if r.baseAPI == "" {
+		return nil, errors.New("baseAPI not configured")
+	}
+
+	searchURL := fmt.Sprintf("%s/api/search?q=%s", r.baseAPI, url.QueryEscape(titleQuery))
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, "GET", searchURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("search API returned status %d", resp.StatusCode)
+	}
+
+	var res searchAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+
+	var targetURL string
+	if res.BestMatch != nil && res.BestMatch.URL != "" {
+		targetURL = res.BestMatch.URL
+	} else if len(res.Results) > 0 && res.Results[0].URL != "" {
+		targetURL = res.Results[0].URL
+	}
+
+	if targetURL == "" {
+		return nil, errors.New("no search results found")
+	}
+
+	log.Printf("[searchViaAPI] Matched '%s' -> %s, scraping releases...", titleQuery, targetURL)
+	return r.GetSeriesReleases(ctx, targetURL)
 }

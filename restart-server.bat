@@ -3,8 +3,8 @@ echo ============================================================
 echo Restarting Permanent Localhost Server and Go Telegram Bot...
 echo ============================================================
 call "%~dp0stop-server.bat"
-timeout /t 2 /nobreak >nul
+powershell -NoProfile -Command "Start-Sleep -Seconds 2"
 wscript.exe "%~dp0start-hidden.vbs"
-timeout /t 3 /nobreak >nul
+powershell -NoProfile -Command "Start-Sleep -Seconds 4"
 echo.
-call "%~dp0check-status.bat"
+powershell -NoProfile -Command "try { $res = Invoke-RestMethod -Uri 'http://localhost:3000/health' -TimeoutSec 3; Write-Host '[ONLINE] Server is running healthy on http://localhost:3000' -ForegroundColor Green; Write-Host ('Uptime: ' + [math]::Round($res.uptime/60, 2) + ' minutes') } catch { Write-Host '[OFFLINE] Server is not running on http://localhost:3000' -ForegroundColor Red }"

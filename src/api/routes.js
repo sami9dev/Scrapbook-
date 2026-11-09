@@ -164,6 +164,82 @@ router.post('/scrape-page', async (req, res) => {
       });
     }
 
+    // Check if page belongs to 4KHub4U / 4KHDHub
+    const is4KHub =
+      /4khub4u|4khdhub|hdhub4u/i.test(targetUrl) ||
+      /4khdhub|4khub4u|hdhub4u/i.test(html) ||
+      html.includes('4kHdHub.Com') ||
+      html.includes('4KHDHub') ||
+      html.includes('greenmotors');
+
+    if (is4KHub) {
+      const { parse4KHubCatalogue, resolveCatalogueLinks } = await import('../scrapers/4khub4u/catalogue.js');
+      const { isHubCloudDriveUrl, extractHubCloudDriveId } = await import('../providers/hubcloud/validator.js');
+      const { recordInCatalog } = await import('../utils/catalog-store.js');
+
+      const rawCatalogue = parse4KHubCatalogue(html, targetUrl);
+      const catalogue = await resolveCatalogueLinks(rawCatalogue, { concurrency: 10, timeout: 5000 }).catch(() => rawCatalogue);
+      const isMoviePage = catalogue.type === 'movie';
+
+      recordInCatalog({
+        title: catalogue.title || '4KHub4U Content',
+        url: targetUrl,
+        format: isMoviePage ? 'Movie' : 'Series',
+        platform: '4KHub4U',
+      });
+
+      const allReleases =
+        catalogue.type === 'series' && Array.isArray(catalogue.seasons)
+          ? catalogue.seasons.flatMap((s) => s.releases || [])
+          : Array.isArray(catalogue.qualities)
+          ? catalogue.qualities.flatMap((q) => q.releases || [])
+          : [];
+
+      const savedRecords = [];
+      for (const rel of allReleases) {
+        for (const dl of (rel.downloadLinks || [])) {
+          const rawLink = dl.url;
+          const isDirectHubCloud = dl.isDirectDestination || isHubCloudDriveUrl(rawLink) || /hubcloud\.[a-z0-9.]+/i.test(rawLink);
+          const providerUrl = isDirectHubCloud ? rawLink : null;
+          const mediatorUrl = isDirectHubCloud ? null : rawLink;
+          const fileId = isDirectHubCloud ? extractHubCloudDriveId(rawLink) : null;
+          const status = isDirectHubCloud ? 'RESOLVED' : 'DISCOVERED';
+
+          const docToSave = {
+            sourceUrl: targetUrl,
+            sourceDomain: new URL(targetUrl).hostname,
+            title: rel.label || catalogue.title,
+            filename: rel.filename || rel.label || catalogue.title,
+            scope: rel.scope || (isMoviePage ? 'movie' : (rel.episode !== null && rel.episode !== undefined ? 'episode' : 'pack')),
+            season: isMoviePage ? null : (rel.season ?? 1),
+            episode: isMoviePage ? null : (rel.episode ?? null),
+            quality: rel.quality?.normalized || rel.resolution || 'unknown',
+            codec: rel.codec || null,
+            sizeDisplay: rel.fileSize || null,
+            provider: dl.provider || 'HUBCLOUD',
+            providerUrl,
+            mediatorUrl,
+            fileId,
+            status,
+          };
+
+          const saved = await scrapedLinksRepo.saveLink(docToSave);
+          savedRecords.push(saved);
+        }
+      }
+
+      logger.log('TIMING', `[catalogue-query] 4KHub4U fast-path scrape url=${targetUrl} totalReleases=${savedRecords.length} took=${Date.now() - scrapeStart}ms`);
+
+      return res.json({
+        success: true,
+        challenge: false,
+        title: catalogue.title,
+        type: catalogue.type,
+        totalReleases: savedRecords.length,
+        records: savedRecords,
+      });
+    }
+
     // Check if page contains catalogue cards
     const hasCards =
       html.includes('download-item') ||

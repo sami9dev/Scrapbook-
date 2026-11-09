@@ -430,7 +430,7 @@ export class JobQueue {
     }
 
     // Step 2: Parse Source Page
-    const is4KHDHub = /4khdhub|hdhub4u/i.test(job.url) || /4khdhub/i.test(sourceFetch.body) || /hubcloud/i.test(sourceFetch.body);
+    const is4KHDHub = /4khdhub|hdhub4u|4khub4u/i.test(job.url) || /4khdhub|4khub4u/i.test(sourceFetch.body) || /hubcloud/i.test(sourceFetch.body);
     if (is4KHDHub) {
       logger.discovered(`Routing job ${jobId} to dedicated 4KHDHub/HubCloud pipeline`);
       const { extract4KHDHubLinks } = await import('../providers/4khdhub/extractor.js');
