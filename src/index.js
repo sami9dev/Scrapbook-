@@ -67,29 +67,38 @@ export async function startServer() {
     // 2. Create Express app
     const app = await createApp();
 
-    // 3. Listen on port
-    const server = app.listen(config.port, () => {
-      logger.database(`Server listening on http://localhost:${config.port}`);
-      logger.database(`Admin dashboard available at http://localhost:${config.port}/`);
+    // 3. Listen on port with error handling
+    let goBotProcess = null;
+    let telegramBot = null;
 
-      // Keep-alive pinger for Render free tier (prevents 15m idle shutdown)
-      const externalUrl = process.env.RENDER_EXTERNAL_URL || 'https://scrapbook-0mrx.onrender.com';
-      if (externalUrl) {
-        const KEEP_ALIVE_INTERVAL = 10 * 60 * 1000; // 10 minutes
-        setInterval(async () => {
-          try {
-            const res = await fetch(`${externalUrl}/health`);
-            logger.database(`[Keep-Alive] Ping to ${externalUrl}/health -> ${res.status}`);
-          } catch (e) {
-            logger.warning(`[Keep-Alive] Ping failed: ${e.message}`);
-          }
-        }, KEEP_ALIVE_INTERVAL);
-        logger.database(`[Keep-Alive] Scheduled every 10 minutes for ${externalUrl}`);
-      }
+    const server = await new Promise((resolve, reject) => {
+      const srv = app.listen(config.port, () => {
+        logger.database(`Server listening on http://localhost:${config.port}`);
+        logger.database(`Admin dashboard available at http://localhost:${config.port}/`);
+        resolve(srv);
+      });
+
+      srv.once('error', (err) => {
+        reject(err);
+      });
     });
 
+    // Keep-alive pinger for Render free tier (prevents 15m idle shutdown)
+    const externalUrl = process.env.RENDER_EXTERNAL_URL || 'https://scrapbook-0mrx.onrender.com';
+    if (externalUrl) {
+      const KEEP_ALIVE_INTERVAL = 10 * 60 * 1000; // 10 minutes
+      setInterval(async () => {
+        try {
+          const res = await fetch(`${externalUrl}/health`);
+          logger.database(`[Keep-Alive] Ping to ${externalUrl}/health -> ${res.status}`);
+        } catch (e) {
+          logger.warning(`[Keep-Alive] Ping failed: ${e.message}`);
+        }
+      }, KEEP_ALIVE_INTERVAL);
+      logger.database(`[Keep-Alive] Scheduled every 10 minutes for ${externalUrl}`);
+    }
+
     // 4. Initialize Telegram Bot if token provided
-    let telegramBot = null;
     if (process.env.ENABLE_NODE_TELEGRAM_BOT === 'true' && process.env.TELEGRAM_BOT_TOKEN) {
       try {
         const { Telegram4KHub4UBot } = await import('./bot/telegram/index.js');
@@ -110,12 +119,18 @@ export async function startServer() {
       }
     }
 
-    // 5. Initialize High-Speed Go Telegram Bot daemon
-    let goBotProcess = null;
+    // 5. Initialize High-Speed Go Telegram Bot daemon (guaranteed single-instance)
     if (process.env.TELEGRAM_BOT_TOKEN) {
       try {
-        const { spawn } = await import('node:child_process');
+        const { spawn, execSync } = await import('node:child_process');
         const fsModule = await import('node:fs');
+
+        // Kill any existing bot process before spawning to prevent 409 Conflict
+        if (process.platform === 'win32') {
+          try {
+            execSync('powershell -NoProfile -Command "Get-Process -Name \'bot\' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"', { stdio: 'ignore' });
+          } catch (_) {}
+        }
 
         const candidatePaths = [
           path.resolve(__dirname, '..', 'go-telegram-bot', process.platform === 'win32' ? 'bot.exe' : 'bot-linux'),

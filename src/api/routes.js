@@ -199,10 +199,10 @@ router.post('/scrape-page', async (req, res) => {
       for (const rel of allReleases) {
         for (const dl of (rel.downloadLinks || [])) {
           const rawLink = dl.url;
-          const isDirectHubCloud = dl.isDirectDestination || isHubCloudDriveUrl(rawLink) || /hubcloud\.[a-z0-9.]+/i.test(rawLink);
+          const isDirectHubCloud = dl.isDirectDestination || isHubCloudDriveUrl(rawLink) || /hubcloud\.[a-z0-9.]+/i.test(rawLink) || /hubdrive\.[a-z0-9.]+/i.test(rawLink);
           const providerUrl = isDirectHubCloud ? rawLink : null;
           const mediatorUrl = isDirectHubCloud ? null : rawLink;
-          const fileId = isDirectHubCloud ? extractHubCloudDriveId(rawLink) : null;
+          const fileId = isDirectHubCloud ? (extractHubCloudDriveId(rawLink) || rawLink.split('/').pop()) : null;
           const status = isDirectHubCloud ? 'RESOLVED' : 'DISCOVERED';
 
           const docToSave = {

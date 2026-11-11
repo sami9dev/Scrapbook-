@@ -433,125 +433,106 @@ export class JobQueue {
     const is4KHDHub = /4khdhub|hdhub4u|4khub4u/i.test(job.url) || /4khdhub|4khub4u/i.test(sourceFetch.body) || /hubcloud/i.test(sourceFetch.body);
     if (is4KHDHub) {
       logger.discovered(`Routing job ${jobId} to dedicated 4KHDHub/HubCloud pipeline`);
-      const { extract4KHDHubLinks } = await import('../providers/4khdhub/extractor.js');
-      const { resolveMediatorFlow } = await import('../resolvers/mediator/browser.js');
+      const { parse4KHubCatalogue, resolveCatalogueLinks } = await import('../scrapers/4khub4u/catalogue.js');
+      const { isHubCloudDriveUrl, extractHubCloudDriveId } = await import('../providers/hubcloud/validator.js');
+      const { recordInCatalog } = await import('../utils/catalog-store.js');
 
-      const extracted = extract4KHDHubLinks(sourceFetch.body, sourceFetch.finalUrl || job.url);
-      const allExtractedLinks = extracted.links;
-      const isMoviePage = extracted.contentType === 'movie' || (allExtractedLinks.length > 0 && allExtractedLinks.every((l) => l.scope === 'movie'));
+      const rawCatalogue = parse4KHubCatalogue(sourceFetch.body, sourceFetch.finalUrl || job.url);
+      const catalogue = await resolveCatalogueLinks(rawCatalogue, { concurrency: 20, timeout: 4500 }).catch(() => rawCatalogue);
+      const isMoviePage = catalogue.type === 'movie';
 
-      // 1. Save ALL candidate links to database so that both Single Episodes and Complete Season Packs in ALL qualities are preserved
-      for (const item of allExtractedLinks) {
-        const title = item.filename || item.title || '4KHDHub Content';
-        const itemScope = item.scope || (isMoviePage ? 'movie' : (item.episode !== null && item.episode !== undefined ? 'episode' : (item.season !== null && item.season !== undefined ? 'pack' : 'movie')));
-        await scrapedLinksRepo.saveLink({
-          sourceUrl: job.url,
-          sourceDomain: new URL(job.url).hostname,
-          title,
-          scope: itemScope,
-          season: isMoviePage ? null : item.season,
-          episode: isMoviePage ? null : item.episode,
-          quality: item.quality,
-          provider: 'HUBCLOUD',
-          mediatorUrl: item.mediatorUrl,
-          filename: item.filename || title,
-          status: 'DISCOVERED',
-        });
-      }
+      recordInCatalog({
+        title: catalogue.title || '4KHub4U Content',
+        url: job.url,
+        format: isMoviePage ? 'Movie' : 'Series',
+        platform: '4KHub4U',
+      });
 
-      // 2. Select candidates to resolve based on user's targetQuality and targetScope
-      let toResolve = [...allExtractedLinks];
-      if (job.targetQuality && job.targetQuality !== 'all') {
-        const filtered = toResolve.filter((l) => matchesQuality(l.quality, job.targetQuality));
-        if (filtered.length > 0) toResolve = filtered;
-      }
-      if (job.targetScope && job.targetScope !== 'all') {
-        if (isMoviePage) {
-          // A movie has standalone quality releases; resolve movie links without requiring user to change episode/pack dropdown
-          const filtered = toResolve.filter((l) => l.scope === 'movie');
-          if (filtered.length > 0) toResolve = filtered;
-        } else {
-          const filtered = toResolve.filter((l) => l.scope === job.targetScope);
-          if (filtered.length > 0) toResolve = filtered;
-        }
-      }
-
-      logger.parsing(`Found ${allExtractedLinks.length} total link(s), resolving ${toResolve.length} candidate(s) for "${extracted.title}" (Content: ${isMoviePage ? 'Movie' : 'Series'}, Scope: ${job.targetScope || 'all'}, Quality: ${job.targetQuality || 'all'})`);
-
-      const concurrencyLimit = config.mediatorConcurrency;
-      const batchStart = Date.now();
-      logger.parsing(`[4KHDHub] Starting concurrent mediator resolution: ${toResolve.length} link(s), concurrency=${concurrencyLimit}`);
-
-      const { results: resolutionResults, timings: batchTimings } = await runBoundedWithBrowser(
-        toResolve.map((item, idx) => async (sharedBrowser) => {
-          const workerStart = Date.now();
-          logger.log('RESOLVER', `[4KHDHub Worker ${idx + 1}/${toResolve.length}] Resolving mediator for [${item.quality}] [${item.scope || 'episode'}] "${item.title}"`);
-
-          const resolution = await resolveMediatorFlow(item.mediatorUrl, {
-            meta: item,
-            countdownTimeout: 35000,
-            navigationTimeout: 20000,
-            existingBrowser: sharedBrowser,
-          });
-
-          // Per-link timing breakdown from StateMachine stage history
-          const stages = resolution.stageDurations || {};
-          const navMs = stages.MEDIATOR_OPEN || 0;
-          const waitMs = (stages.WAITING || 0) + (stages.COUNTDOWN || 0);
-          const linkMs = stages.LINK_READY || 0;
-          const totalMs = Date.now() - workerStart;
-          logger.log('TIMING', `[4KHDHub Link ${idx + 1}/${toResolve.length}] Total: ${totalMs}ms | Nav: ${navMs}ms | ExternalWait: ${waitMs}ms | LinkReady: ${linkMs}ms | State: ${resolution.state}`);
-
-          let finalTitle = resolution.meta?.filename || resolution.meta?.title;
-          if (resolution.success && resolution.destination && isHubCloudDriveUrl(resolution.destination)) {
-            if (!finalTitle || finalTitle === item.title || finalTitle === 'Unknown Title') {
-              const hubMeta = await fetchHubCloudMetadata(resolution.destination);
-              if (hubMeta?.filename) finalTitle = hubMeta.filename;
-            }
-          }
-          finalTitle = finalTitle || item.filename || item.title;
-
-          return { item, resolution, finalTitle };
-        }),
-        concurrencyLimit,
-        { headless: true }
-      );
-
-      logger.log('TIMING', `[4KHDHub] Batch complete: ${toResolve.length} link(s) | Wall: ${Date.now() - batchStart}ms | BrowserLaunch: ${batchTimings.browserStartMs}ms | Concurrency: ${concurrencyLimit}`);
+      const allReleases =
+        catalogue.type === 'series' && Array.isArray(catalogue.seasons)
+          ? catalogue.seasons.flatMap((s) => s.releases || [])
+          : Array.isArray(catalogue.qualities)
+          ? catalogue.qualities.flatMap((q) => q.releases || [])
+          : [];
 
       let resolvedCount = 0;
-      for (const result of resolutionResults) {
-        if (result instanceof Error) {
-          logger.warning(`[4KHDHub] Worker threw unexpected error: ${result.message}`);
-          continue;
-        }
-        const { item, resolution, finalTitle } = result;
-        if (resolution.success && resolution.destination && isHubCloudDriveUrl(resolution.destination)) {
-          resolvedCount++;
-          await scrapedLinksRepo.saveLink({
+      let totalLinksCount = 0;
+      const unresolvedLinks = [];
+
+      for (const rel of allReleases) {
+        for (const dl of (rel.downloadLinks || [])) {
+          totalLinksCount++;
+          const rawLink = dl.url;
+          const isDirectHubCloud = dl.isDirectDestination || isHubCloudDriveUrl(rawLink) || /hubcloud\.[a-z0-9.]+/i.test(rawLink);
+          const providerUrl = isDirectHubCloud ? rawLink : null;
+          const mediatorUrl = isDirectHubCloud ? null : rawLink;
+          const fileId = isDirectHubCloud ? extractHubCloudDriveId(rawLink) : null;
+          const status = isDirectHubCloud ? SCRAPED_STATUS.RESOLVED : SCRAPED_STATUS.DISCOVERED;
+          if (isDirectHubCloud) resolvedCount++;
+
+          const savedDoc = {
             sourceUrl: job.url,
             sourceDomain: new URL(job.url).hostname,
-            title: finalTitle,
-            scope: item.scope || (isMoviePage ? 'movie' : (item.episode !== null && item.episode !== undefined ? 'episode' : (item.season !== null && item.season !== undefined ? 'pack' : 'movie'))),
-            season: isMoviePage ? null : item.season,
-            episode: isMoviePage ? null : item.episode,
-            quality: item.quality,
-            provider: 'HUBCLOUD',
-            providerUrl: resolution.destination,
-            mediatorUrl: item.mediatorUrl,
-            fileId: extractHubCloudDriveId(resolution.destination),
-            filename: finalTitle,
-            status: SCRAPED_STATUS.RESOLVED,
-          });
-        } else {
-          logger.warning(`[4KHDHub] Mediator resolution skipped/failed for "${item.title}" (${resolution.state})`);
+            title: rel.label || catalogue.title,
+            filename: rel.filename || rel.label || catalogue.title,
+            scope: rel.scope || (isMoviePage ? 'movie' : (rel.episode !== null && rel.episode !== undefined ? 'episode' : 'pack')),
+            season: isMoviePage ? null : (rel.season ?? 1),
+            episode: isMoviePage ? null : (rel.episode ?? null),
+            quality: rel.quality?.normalized || rel.resolution || 'unknown',
+            codec: rel.codec || null,
+            sizeDisplay: rel.fileSize || null,
+            provider: dl.provider || 'HUBCLOUD',
+            providerUrl,
+            mediatorUrl,
+            fileId,
+            status,
+          };
+
+          await scrapedLinksRepo.saveLink(savedDoc);
+
+          if (!isDirectHubCloud && mediatorUrl) {
+            unresolvedLinks.push({ rel, dl, doc: savedDoc });
+          }
         }
       }
 
+      // Browser fallback for any residual links that could not be resolved via HTTP inspection
+      if (unresolvedLinks.length > 0 && config.browserScraperEnabled !== false) {
+        logger.log('4KHub4U', `[4KHub4U] Attempting browser fallback for ${unresolvedLinks.length} unresolved mediator link(s)...`);
+        try {
+          const { resolveMediatorFlow } = await import('../resolvers/mediator/browser.js');
+          const concurrencyLimit = Math.min(config.mediatorConcurrency || 1, unresolvedLinks.length);
+          await runBoundedWithBrowser(
+            unresolvedLinks.map(({ doc, dl }) => async (sharedBrowser) => {
+              try {
+                const res = await resolveMediatorFlow(dl.url, {
+                  meta: doc,
+                  countdownTimeout: 25000,
+                  navigationTimeout: 15000,
+                  existingBrowser: sharedBrowser,
+                });
+                if (res.success && res.destination && isHubCloudDriveUrl(res.destination)) {
+                  resolvedCount++;
+                  doc.providerUrl = res.destination;
+                  doc.fileId = extractHubCloudDriveId(res.destination);
+                  doc.status = SCRAPED_STATUS.RESOLVED;
+                  await scrapedLinksRepo.saveLink(doc);
+                }
+              } catch (_) {}
+            }),
+            concurrencyLimit,
+            { headless: true }
+          );
+        } catch (bErr) {
+          logger.warning(`[4KHub4U] Browser fallback notice: ${bErr.message}`);
+        }
+      }
+
+      logger.log('4KHub4U', `Job ${jobId} finished: ${allReleases.length} release(s), ${resolvedCount}/${totalLinksCount} direct HubCloud links resolved`);
 
       await jobsRepo.updateJob(jobId, {
         status: SCRAPED_STATUS.RESOLVED,
-        extractedCount: resolvedCount || allExtractedLinks.length,
+        extractedCount: resolvedCount || totalLinksCount,
       });
       return;
     }
