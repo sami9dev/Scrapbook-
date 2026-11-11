@@ -246,7 +246,7 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 			if dest == "" {
 				dest = m.MediatorURL
 			}
-			if dest == "" {
+			if dest == "" || strings.Contains(strings.ToLower(dest), "hubdrive") || strings.EqualFold(m.Provider, "HubDrive") {
 				continue
 			}
 			cat, rank := getReleaseCategory(m.Filename, m.Quality)
@@ -337,7 +337,7 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 		if dest == "" {
 			dest = p.MediatorURL
 		}
-		if dest == "" {
+		if dest == "" || strings.Contains(strings.ToLower(dest), "hubdrive") || strings.EqualFold(p.Provider, "HubDrive") {
 			continue
 		}
 		sg := getOrCreateSeason(p.Season)
@@ -351,7 +351,7 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 		if dest == "" {
 			dest = ep.MediatorURL
 		}
-		if dest == "" {
+		if dest == "" || strings.Contains(strings.ToLower(dest), "hubdrive") || strings.EqualFold(ep.Provider, "HubDrive") {
 			continue
 		}
 		sg := getOrCreateSeason(ep.Season)

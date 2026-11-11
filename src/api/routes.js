@@ -199,7 +199,11 @@ router.post('/scrape-page', async (req, res) => {
       for (const rel of allReleases) {
         for (const dl of (rel.downloadLinks || [])) {
           const rawLink = dl.url;
-          const isDirectHubCloud = dl.isDirectDestination || isHubCloudDriveUrl(rawLink) || /hubcloud\.[a-z0-9.]+/i.test(rawLink) || /hubdrive\.[a-z0-9.]+/i.test(rawLink);
+          // STRICT FILTER: HubDrive links are prohibited; only HubCloud links are preserved
+          if (!rawLink || /hubdrive/i.test(dl.provider || '') || /hubdrive/i.test(rawLink)) {
+            continue;
+          }
+          const isDirectHubCloud = dl.isDirectDestination || isHubCloudDriveUrl(rawLink) || /hubcloud\.[a-z0-9.]+/i.test(rawLink);
           const providerUrl = isDirectHubCloud ? rawLink : null;
           const mediatorUrl = isDirectHubCloud ? null : rawLink;
           const fileId = isDirectHubCloud ? (extractHubCloudDriveId(rawLink) || rawLink.split('/').pop()) : null;
@@ -216,7 +220,7 @@ router.post('/scrape-page', async (req, res) => {
             quality: rel.quality?.normalized || rel.resolution || 'unknown',
             codec: rel.codec || null,
             sizeDisplay: rel.fileSize || null,
-            provider: dl.provider || 'HUBCLOUD',
+            provider: 'HubCloud',
             providerUrl,
             mediatorUrl,
             fileId,
@@ -636,8 +640,14 @@ router.get('/links', async (req, res) => {
     });
     logger.log('TIMING', `[catalogue-query] filter=${JSON.stringify(Object.keys(query))} limit=${limit} results=${links.length} took=${Date.now() - queryStart}ms`);
 
-    // Exclude intermediate mediator URLs and DotFlix (only genuine GDFLIX/HubCloud)
-    links = links.filter((l) => !(l.providerUrl && l.providerUrl.includes('greenmotors')) && !/dtflix|dotflix/i.test(l.providerUrl || ''));
+    // Exclude intermediate mediator URLs, DotFlix, and HubDrive links (only genuine HubCloud)
+    links = links.filter((l) =>
+      !(l.providerUrl && l.providerUrl.includes('greenmotors')) &&
+      !/dtflix|dotflix/i.test(l.providerUrl || '') &&
+      !/hubdrive/i.test(l.provider || '') &&
+      !/hubdrive/i.test(l.providerUrl || '') &&
+      !/hubdrive/i.test(l.mediatorUrl || '')
+    );
 
     return res.json(links);
   } catch (err) {
@@ -1231,7 +1241,11 @@ router.post('/parse-html', async (req, res) => {
       for (const rel of allReleases) {
         for (const dl of (rel.downloadLinks || [])) {
           const rawLink = dl.url;
-          const isDirect = dl.isDirectDestination || isHubCloudDriveUrl(rawLink) || /hubcloud\.[a-z0-9.]+/i.test(rawLink) || /hubdrive\.[a-z0-9.]+/i.test(rawLink);
+          // STRICT FILTER: HubDrive links are prohibited; only HubCloud links are preserved
+          if (!rawLink || /hubdrive/i.test(dl.provider || '') || /hubdrive/i.test(rawLink)) {
+            continue;
+          }
+          const isDirect = dl.isDirectDestination || isHubCloudDriveUrl(rawLink) || /hubcloud\.[a-z0-9.]+/i.test(rawLink);
           const providerUrl = isDirect ? rawLink : null;
           const mediatorUrl = isDirect ? null : rawLink;
           const fileId = isDirect ? (extractHubCloudDriveId(rawLink) || rawLink.split('/').pop()) : null;
@@ -1248,7 +1262,7 @@ router.post('/parse-html', async (req, res) => {
             quality: rel.quality?.normalized || rel.resolution || 'unknown',
             codec: rel.codec || null,
             sizeDisplay: rel.fileSize || null,
-            provider: dl.provider || 'HUBCLOUD',
+            provider: 'HubCloud',
             providerUrl,
             mediatorUrl,
             fileId,

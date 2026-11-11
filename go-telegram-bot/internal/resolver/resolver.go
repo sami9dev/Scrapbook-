@@ -38,6 +38,7 @@ type StoredLink struct {
 	Season      int    `json:"season"`
 	Episode     int    `json:"episode"`
 	Quality     string `json:"quality"`
+	Provider    string `json:"provider"`
 	ProviderURL string `json:"providerUrl"`
 	MediatorURL string `json:"mediatorUrl"`
 	Status      string `json:"status"`
@@ -223,16 +224,20 @@ func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*Serie
 		Title:   extractDisplayTitle(matched[0].Title),
 		URL:     rawURL,
 		IsMovie: isMovie,
-		Total:   len(matched),
+		Total:   0,
 	}
 
 	for _, m := range matched {
+		if strings.EqualFold(m.Provider, "HubDrive") || strings.Contains(strings.ToLower(m.ProviderURL), "hubdrive") || strings.Contains(strings.ToLower(m.MediatorURL), "hubdrive") {
+			continue
+		}
 		if m.Scope == "pack" || m.Type == "pack" || strings.HasSuffix(strings.ToLower(m.Filename), ".zip") {
 			sr.Packs = append(sr.Packs, m)
 		} else {
 			sr.Episodes = append(sr.Episodes, m)
 		}
 	}
+	sr.Total = len(sr.Packs) + len(sr.Episodes)
 
 	return sr, nil
 }
@@ -290,16 +295,20 @@ func (r *Resolver) SearchByTitle(ctx context.Context, titleQuery string) (*Serie
 		Title:   extractDisplayTitle(matched[0].Title),
 		URL:     matched[0].SourceURL,
 		IsMovie: isMovie,
-		Total:   len(matched),
+		Total:   0,
 	}
 
 	for _, m := range matched {
+		if strings.EqualFold(m.Provider, "HubDrive") || strings.Contains(strings.ToLower(m.ProviderURL), "hubdrive") || strings.Contains(strings.ToLower(m.MediatorURL), "hubdrive") {
+			continue
+		}
 		if m.Scope == "pack" || m.Type == "pack" || strings.HasSuffix(strings.ToLower(m.Filename), ".zip") {
 			sr.Packs = append(sr.Packs, m)
 		} else {
 			sr.Episodes = append(sr.Episodes, m)
 		}
 	}
+	sr.Total = len(sr.Packs) + len(sr.Episodes)
 
 	return sr, nil
 }

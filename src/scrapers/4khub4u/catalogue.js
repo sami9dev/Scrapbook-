@@ -262,15 +262,21 @@ export function parse4KHubCatalogue(html, sourceUrl = '') {
       }
 
       const text = $a.text().trim();
-      const isHub = /hubcloud|hubdrive|drive|download/i.test(text) || /greenmotors|fast-share|fastdl|mediator|\?id=/i.test(href);
+
+      // STRICT FILTER: Discard all HubDrive buttons and links. HubCloud (hubcloud.pw/drive/...) is ALWAYS and ONLY returned.
+      if (/hubdrive/i.test(text) || /hubdrive/i.test(href)) {
+        return;
+      }
+
+      const isHub = /hubcloud|drive|download/i.test(text) || /greenmotors|fast-share|fastdl|mediator|\?id=/i.test(href);
       if (!isHub) return;
 
-      const provider = /hubdrive/i.test(text) ? 'HubDrive' : 'HubCloud';
+      const provider = 'HubCloud';
       const isDirect = isHubCloudDriveUrl(href);
 
       links.push({
         provider,
-        label: text || `Download ${provider}`,
+        label: text || 'Download HubCloud',
         url: href,
         isDirectDestination: isDirect,
       });
@@ -460,7 +466,12 @@ export function parse4KHubCatalogue(html, sourceUrl = '') {
       if (!href || href === '#' || href.startsWith('javascript:')) return;
 
       const text = $a.text().trim();
-      if (!/hubcloud|download|hubdrive/i.test(text) && !/greenmotors|fastdl|\?id=/i.test(href)) {
+      // STRICT FILTER: Discard all HubDrive links
+      if (/hubdrive/i.test(text) || /hubdrive/i.test(href)) {
+        return;
+      }
+
+      if (!/hubcloud|download/i.test(text) && !/greenmotors|fastdl|\?id=/i.test(href)) {
         return;
       }
 
@@ -495,7 +506,7 @@ export function parse4KHubCatalogue(html, sourceUrl = '') {
         episode: null,
         downloadLinks: [
           {
-            provider: /hubdrive/i.test(text) ? 'HubDrive' : 'HubCloud',
+            provider: 'HubCloud',
             label: text || 'Download HubCloud',
             url: href,
             isDirectDestination: isHubCloudDriveUrl(href),
@@ -633,17 +644,20 @@ export async function resolveCatalogueLinks(catalogue, options = {}) {
           const dest = extractEmbeddedMediatorPayload(res.body);
           if (dest) {
             const targetLinks = urlMap.get(url) || [];
-            for (const tl of targetLinks) {
-              tl.resolvedUrl = dest;
-              tl.url = dest; // Point directly to verified storage link
-              tl.isDirectDestination = true;
-              if (/hubdrive/i.test(dest)) {
-                tl.provider = 'HubDrive';
-              } else if (/hubcloud/i.test(dest)) {
+            if (/hubdrive/i.test(dest)) {
+              for (const tl of targetLinks) {
+                tl.isInvalid = true;
+                tl.error = 'HubDrive link omitted (only HubCloud accepted)';
+              }
+            } else {
+              for (const tl of targetLinks) {
+                tl.resolvedUrl = dest;
+                tl.url = dest; // Point directly to verified storage link
+                tl.isDirectDestination = true;
                 tl.provider = 'HubCloud';
               }
+              resolvedCount++;
             }
-            resolvedCount++;
           } else {
             const isDead = INVALID_LINK_PATTERNS.some((p) => p.test(res.body));
             if (isDead) {
@@ -664,6 +678,15 @@ export async function resolveCatalogueLinks(catalogue, options = {}) {
   const workerCount = Math.min(concurrency, uniqueUrls.length);
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
   logger.log('4KHub4U', `[4KHub4U] Resolved ${resolvedCount}/${uniqueUrls.length} HubCloud links directly to storage in ${Date.now() - t0}ms`);
+
+  // STRICT FILTER: Remove any HubDrive or invalid links across all releases
+  for (const rel of allReleases) {
+    if (Array.isArray(rel.downloadLinks)) {
+      rel.downloadLinks = rel.downloadLinks.filter(
+        (tl) => !tl.isInvalid && !/hubdrive/i.test(tl.url || '') && !/hubdrive/i.test(tl.provider || '')
+      );
+    }
+  }
 
   return catalogue;
 }

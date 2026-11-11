@@ -461,8 +461,12 @@ export class JobQueue {
 
       for (const rel of allReleases) {
         for (const dl of (rel.downloadLinks || [])) {
-          totalLinksCount++;
           const rawLink = dl.url;
+          // STRICT FILTER: Discard any HubDrive links; only HubCloud is supported
+          if (!rawLink || /hubdrive/i.test(dl.provider || '') || /hubdrive/i.test(rawLink)) {
+            continue;
+          }
+          totalLinksCount++;
           const isDirectHubCloud = dl.isDirectDestination || isHubCloudDriveUrl(rawLink) || /hubcloud\.[a-z0-9.]+/i.test(rawLink);
           const providerUrl = isDirectHubCloud ? rawLink : null;
           const mediatorUrl = isDirectHubCloud ? null : rawLink;
@@ -481,7 +485,7 @@ export class JobQueue {
             quality: rel.quality?.normalized || rel.resolution || 'unknown',
             codec: rel.codec || null,
             sizeDisplay: rel.fileSize || null,
-            provider: dl.provider || 'HUBCLOUD',
+            provider: 'HubCloud',
             providerUrl,
             mediatorUrl,
             fileId,

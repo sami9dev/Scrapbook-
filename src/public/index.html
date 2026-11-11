@@ -1177,9 +1177,10 @@
 
     function getFilteredLinks() {
       return (allLinks || []).filter((link) => {
-        // 1. STRICT SECURITY & FIDELITY: Never show or output greenmotors mediator URLs
+        // 1. STRICT SECURITY & FIDELITY: Never show or output greenmotors mediator URLs or HubDrive links
         const url = link.providerUrl || '';
         if (url.includes('greenmotors') || url.includes('?id=')) return false;
+        if (/hubdrive/i.test(link.provider || '') || /hubdrive/i.test(url) || /hubdrive/i.test(link.mediatorUrl || '')) return false;
 
         // 2. Scope Container Filter
         const scope = link.scope || (link.episode !== null && link.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
@@ -1407,6 +1408,7 @@
           if (url.includes('greenmotors') || url.includes('?id=')) return false;
           if (url.includes('thenaukriadda') || url.includes('naukriadda')) return false;
           if (url.includes('dtflix') || url.includes('dotflix')) return false;
+          if (/hubdrive/i.test(link.provider || '') || /hubdrive/i.test(url) || /hubdrive/i.test(link.mediatorUrl || '')) return false;
           if ((link.provider || '').toUpperCase() === 'HUBCLOUD' && !/hubcloud/i.test(url)) return false;
           return Boolean(url);
         })
