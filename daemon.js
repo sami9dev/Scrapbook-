@@ -17,7 +17,9 @@ function log(msg) {
   try {
     fs.appendFileSync(LOG_FILE, line, 'utf8');
   } catch {}
-  process.stdout.write(line);
+  try {
+    process.stdout.write(line);
+  } catch {}
 }
 
 function isPortInUse(port) {

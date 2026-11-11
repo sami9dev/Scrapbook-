@@ -602,12 +602,11 @@ export async function resolveCatalogueLinks(catalogue, options = {}) {
 
   const urlMap = new Map();
   for (const link of allLinks) {
-    // Exclude HubDrive links from resolution - only resolve HubCloud links
-    const isHubDrive =
-      link.provider === 'HubDrive' ||
-      /hubdrive/i.test(link.label || '') ||
-      /hubdrive/i.test(link.url || '');
-    if (isHubDrive) continue;
+    // If link is already a direct destination, mark and skip
+    if (isHubCloudDriveUrl(link.url)) {
+      link.isDirectDestination = true;
+      continue;
+    }
 
     if (link.url && !link.isDirectDestination && !link.resolvedUrl) {
       if (!urlMap.has(link.url)) {
@@ -620,7 +619,7 @@ export async function resolveCatalogueLinks(catalogue, options = {}) {
   const uniqueUrls = Array.from(urlMap.keys());
   if (uniqueUrls.length === 0) return catalogue;
 
-  logger.log('4KHub4U', `[4KHub4U] Resolving ${uniqueUrls.length} unique HubCloud mediator links via HTTP inspection...`);
+  logger.log('4KHub4U', `[4KHub4U] Resolving ${uniqueUrls.length} unique mediator links via HTTP inspection...`);
   const t0 = Date.now();
   let index = 0;
   let resolvedCount = 0;
