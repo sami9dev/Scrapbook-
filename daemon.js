@@ -143,7 +143,7 @@ async function startSafeSupervisor() {
     };
 
     const startTime = Date.now();
-    childProc = spawn('node', ['src/index.js'], {
+    childProc = spawn(process.execPath, ['src/index.js'], {
       cwd: __dirname,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: childEnv,
@@ -181,8 +181,28 @@ async function startSafeSupervisor() {
     });
   }
 
+  // Active watchdog heartbeat & health check: guarantees the supervisor event loop never sleeps/exits
+  setInterval(async () => {
+    if (!shouldRestart) return;
+    try {
+      const isHealthy = await checkHealth(PORT);
+      if (!isHealthy && !childProc) {
+        log(`Periodic watchdog: server on port ${PORT} is not responding and childProc is null. Restarting...`);
+        runChild();
+      }
+    } catch (_) {}
+  }, 15000);
+
   runChild();
 }
+
+process.on('uncaughtException', (err) => {
+  log(`Supervisor uncaughtException: ${err?.stack || err?.message || err}`);
+});
+
+process.on('unhandledRejection', (reason) => {
+  log(`Supervisor unhandledRejection: ${reason}`);
+});
 
 function shutdown() {
   log('Shutting down permanent daemon supervisor...');
