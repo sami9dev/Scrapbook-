@@ -118,16 +118,15 @@ export async function resolve4KHub4U(url, options = {}) {
     const finishedAt = Date.now();
     const isTargetDest =
       resolution.destination &&
-      (isHubCloudDriveUrl(resolution.destination) ||
-        /hubdrive\.[a-z]+/i.test(resolution.destination) ||
-        /^https?:\/\/[a-z0-9.-]+\/(?:drive|file)\/[a-z0-9_-]+/i.test(resolution.destination));
+      isHubCloudDriveUrl(resolution.destination) &&
+      !/hubdrive/i.test(resolution.destination);
 
     if (resolution.success && isTargetDest) {
       return {
         success: true,
         state: Hub4UState.DESTINATION_FOUND,
         title: resolution.meta?.title || '4KHub4U Content',
-        provider: /hubdrive/i.test(resolution.destination) ? 'HubDrive' : 'HubCloud',
+        provider: 'HubCloud',
         destination: resolution.destination,
         error: null,
         sourceUrl: normalizedUrl,

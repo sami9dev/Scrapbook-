@@ -10,9 +10,7 @@ import { dbManager } from './database/mongodb.js';
 import { scrapedLinksRepo, jobsRepo } from './database/models.js';
 import apiRoutes from './api/routes.js';
 
-// Pre-load providers
-import './providers/gdflix.js';
-import './providers/vcloud.js';
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

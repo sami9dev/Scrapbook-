@@ -349,7 +349,7 @@ func extractDisplayTitle(rawTitle string) string {
 
 func isIntermediateMediator(urlStr string) bool {
 	lower := strings.ToLower(urlStr)
-	return strings.Contains(lower, "latestnewsonline.sbs") || strings.Contains(lower, "link.xdmovies.")
+	return strings.Contains(lower, "latestnewsonline.sbs") || strings.Contains(lower, "greenmotors")
 }
 
 // Resolve processes an individual URL, checking 3-tier cache first, then resolving

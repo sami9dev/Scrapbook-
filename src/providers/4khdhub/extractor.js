@@ -50,6 +50,11 @@ export function extract4KHDHubLinks(html, sourceUrl = '') {
     const titleAttr = ($el.attr('title') || '').trim();
     const combinedText = `${text} ${ariaLabel} ${titleAttr}`.trim();
 
+    // STRICT FILTER: Discard any HubDrive buttons or links
+    if (/hubdrive/i.test(combinedText) || /hubdrive/i.test(href)) {
+      return;
+    }
+
     // Check if this button or link matches HubCloud download pattern
     const isHubCloudButton = HUBCLOUD_BUTTON_PATTERNS.some((pattern) => pattern.test(combinedText));
 

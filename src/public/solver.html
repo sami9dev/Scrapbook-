@@ -531,12 +531,12 @@
     <header>
       <div class="logo-badge">⚡ Cloudflare Edge Powered</div>
       <h1>HubCloud Stream & Link Resolver</h1>
-      <p class="subtitle">Search movies/series or paste any XDMovies link. Get direct, ad-free HubCloud download buttons instantly.</p>
+      <p class="subtitle">Search movies/series or paste any 4KHDHub / 4KHub4U link. Get direct, ad-free HubCloud download buttons instantly.</p>
     </header>
 
     <div class="solver-box">
       <div class="search-icon">🔍</div>
-      <input type="text" id="urlInput" placeholder="Paste XDMovies URL or search title (e.g. Criminal Justice, Ali Baba)..." autofocus>
+      <input type="text" id="urlInput" placeholder="Paste 4KHDHub URL or search title (e.g. Campus Drivers, Avatar, Dexter)..." autofocus>
       <button class="btn-clear" id="btnClear" title="Clear input">✕</button>
       <button class="btn-paste" id="btnPaste" title="Paste from clipboard">📋 Paste</button>
       <button class="btn-solve" id="btnSolve">
@@ -546,10 +546,10 @@
 
     <div class="sample-chips">
       <span class="sample-label">Quick Try:</span>
-      <span class="chip" data-query="Ali Baba aur 40 Bhoot">🎬 Ali Baba (2026)</span>
-      <span class="chip" data-query="Criminal Justice">⚖️ Criminal Justice</span>
-      <span class="chip" data-query="Mirzapur">🔥 Mirzapur</span>
-      <span class="chip" data-query="https://link.xdmovies.wtf/download/wFib9D8gUijLqmlIX8lrfMPV1ggmISpRsZImVDeJg7Y">🔗 Sample Mediator</span>
+      <span class="chip" data-query="Campus Drivers">🚗 Campus Drivers</span>
+      <span class="chip" data-query="The Good Lawyer">⚖️ The Good Lawyer</span>
+      <span class="chip" data-query="Avatar">🌊 Avatar</span>
+      <span class="chip" data-query="Dexter">🩸 Dexter</span>
     </div>
 
     <div class="status-panel" id="statusPanel">
@@ -681,7 +681,7 @@
 
       try {
         // Path 1: Direct Mediator Link
-        if (norm.includes('link.xdmovies') || norm.includes('/download/')) {
+        if (norm.includes('greenmotors') || norm.includes('fast-share') || norm.includes('fastdl') || norm.includes('?id=')) {
           statusTitle.textContent = 'Looking up mediator link...';
           const res = await fetch(`${API_BASE}/api/links?mediatorUrl=${encodeURIComponent(query)}`);
           if (res.ok) {

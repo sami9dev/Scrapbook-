@@ -5,8 +5,6 @@ import { parseSourcePage } from './sources/source-parser.js';
 import { fetchWithControls } from './discovery/http-client.js';
 import { discoverExposedDestination } from './discovery/link-discovery.js';
 import { providerRegistry } from './providers/provider-registry.js';
-import './providers/gdflix.js';
-import './providers/vcloud.js';
 
 function decodeFileToken(url) {
   if (!url) return null;
@@ -29,7 +27,7 @@ Usage:
   node src/cli.js <URL | HTML_FILE_PATH> [--quality 2160p|1080p|720p|480p|all]
 
 Examples:
-  node src/cli.js https://c1.cloudmoviez.shop/tvshows/from/ --quality 2160p
+  node src/cli.js https://4khdhub.one/campus-drivers-season-1-2026/ --quality 1080p
   node src/cli.js ./saved-page.html --quality 1080p
 `);
     process.exit(0);

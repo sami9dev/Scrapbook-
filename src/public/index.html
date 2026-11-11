@@ -635,10 +635,10 @@
     <div class="submit-card">
       <h3 style="font-size: 1rem; font-weight: 600;">Scrape URL or Search by Title</h3>
       <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 2px;">
-        Enter a CloudMoviez / 4KHDHub / XDMovies URL, or simply type a Movie/Series title (e.g. <code>Gajab Raat</code>, <code>The Uprising</code>, <code>Dridam</code>, <code>Inception</code>).
+        Enter a 4KHDHub / 4KHub4U URL, or simply type a Movie/Series title (e.g. <code>Campus Drivers</code>, <code>Dexter</code>, <code>Avatar</code>).
       </p>
       <form id="scrapeForm" class="input-group">
-        <input type="text" id="targetUrl" placeholder="Enter title (e.g. Gajab Raat, Dridam) or URL (https://huh.xdmovies.wtf/..., https://4khdhub.one/..., https://c1.cloudmoviez.shop/...)" required />
+        <input type="text" id="targetUrl" placeholder="Enter title (e.g. Campus Drivers, Avatar) or URL (https://4khdhub.one/...)" required />
         <select id="targetScope" class="quality-select" title="Content Type / Scope">
           <option value="all" selected>⚡ All Content</option>
           <option value="episode">🎬 Individual Episodes (Single EP's)</option>
@@ -665,12 +665,12 @@
 
       <details style="margin-top: 14px; font-size: 0.85rem; color: var(--text-muted); border-top: 1px dashed var(--border-color); padding-top: 10px;">
         <summary style="cursor: pointer; font-weight: 500; color: #93c5fd; user-select: none;">
-          ⚡ Or Paste HTML Directly (Instant extraction for XDMovies, 4KHDHub, CloudMoviez, UNiTYhub)
+          ⚡ Or Paste HTML Directly (Instant extraction for 4KHDHub / 4KHub4U)
         </summary>
         <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
           <textarea id="rawHtmlTextarea" rows="4" style="width: 100%; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; color: #f3f4f6; font-family: monospace; font-size: 0.8rem; padding: 8px; resize: vertical;" placeholder="Paste raw page HTML here..."></textarea>
           <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-            <input type="text" id="rawHtmlSourceUrl" placeholder="Source URL (e.g. https://huh.xdmovies.wtf/movies/... or https://4khdhub.one/...)" style="flex: 1; min-width: 260px; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #f3f4f6; font-size: 0.85rem;" />
+            <input type="text" id="rawHtmlSourceUrl" placeholder="Source URL (e.g. https://4khdhub.one/...)" style="flex: 1; min-width: 260px; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #f3f4f6; font-size: 0.85rem;" />
             <select id="rawHtmlScope" class="quality-select" style="min-width: 140px; padding: 6px 10px; font-size: 0.85rem;">
               <option value="all" selected>📁 All Content</option>
               <option value="episode">🎬 Single EP's</option>
@@ -700,13 +700,12 @@
             <span id="crawlerBadge" class="badge-pill" style="background: rgba(100, 116, 139, 0.2); color: #94a3b8;">IDLE</span>
           </h3>
           <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 2px;">
-            Crawl XDMovies or 4KHDHub page-by-page across all Movies and Series. Automatically discovers posts and resolves download links into history.
+            Crawl 4KHDHub page-by-page across all Movies and Series. Automatically discovers posts and resolves download links into history.
           </p>
         </div>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
           <select id="crawlerTargetSite" class="quality-select" style="min-width: 175px; padding: 7px 10px; font-size: 0.82rem; background: var(--bg-base); border: 1px solid var(--border-color); color: var(--text-main); border-radius: 6px;">
-            <option value="https://huh.xdmovies.wtf" selected>⚡ XDMovies (HubCloud)</option>
-            <option value="https://4khdhub.one">⚡ 4KHDHub (HubCloud)</option>
+            <option value="https://4khdhub.one" selected>⚡ 4KHDHub (HubCloud)</option>
           </select>
           <button type="button" id="btnCrawl5" style="background: #10b981; color: white; border: none; border-radius: 6px; padding: 7px 14px; font-weight: 600; font-size: 0.82rem; cursor: pointer;">
             ⚡ Crawl Latest 5 Pages
@@ -893,8 +892,6 @@
             <button type="button" class="filter-pill catalog-filter-pill" data-platform="Netflix">Netflix (<span id="catPillNetflix">0</span>)</button>
             <button type="button" class="filter-pill catalog-filter-pill" data-platform="Prime Video">Prime Video (<span id="catPillPrime">0</span>)</button>
             <button type="button" class="filter-pill catalog-filter-pill" data-platform="4KHDHub Archive" style="color: #a855f7; font-weight: 600;">⚡ 4KHDHub (<span id="catPill4KHDHub">0</span>)</button>
-            <button type="button" class="filter-pill catalog-filter-pill" data-platform="CloudMoviez" style="color: #10b981; font-weight: 600;">☁️ CloudMoviez (<span id="catPillCloudMoviez">0</span>)</button>
-            <button type="button" class="filter-pill catalog-filter-pill" data-platform="XDMovies" style="color: #38bdf8; font-weight: 600;">⚡ XDMovies (<span id="catPillXDMovies">0</span>)</button>
           </div>
           <div style="display: flex; gap: 10px; align-items: center; min-width: 280px; flex: 1; max-width: 420px;">
             <input type="text" id="catalogSearchInput" placeholder="🔍 Search movies, series, genres, countries..." style="width: 100%; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 12px; color: var(--text-main); font-size: 0.85rem;" />
@@ -1850,9 +1847,7 @@
       const series = catalogItems.filter(i => i.format !== 'Movie').length;
       const netflix = catalogItems.filter(i => i.platform === 'Netflix').length;
       const prime = catalogItems.filter(i => i.platform === 'Prime Video').length;
-      const fourkhd = catalogItems.filter(i => i.platform === '4KHDHub Archive').length;
-      const cloudmoviez = catalogItems.filter(i => i.platform === 'CloudMoviez').length;
-      const xdmovies = catalogItems.filter(i => i.platform === 'XDMovies').length;
+      const fourkhd = catalogItems.filter(i => i.platform === '4KHDHub Archive' || i.platform === '4KHub4U').length;
 
       const pAll = document.getElementById('catPillAll');
       const pScraped = document.getElementById('catPillScraped');
@@ -1861,8 +1856,6 @@
       const pNetflix = document.getElementById('catPillNetflix');
       const pPrime = document.getElementById('catPillPrime');
       const p4KH = document.getElementById('catPill4KHDHub');
-      const pCM = document.getElementById('catPillCloudMoviez');
-      const pXD = document.getElementById('catPillXDMovies');
       const vCat = document.getElementById('viewCatalogCount');
 
       if (pAll) pAll.textContent = total;
@@ -1872,8 +1865,6 @@
       if (pNetflix) pNetflix.textContent = netflix;
       if (pPrime) pPrime.textContent = prime;
       if (p4KH) p4KH.textContent = fourkhd;
-      if (pCM) pCM.textContent = cloudmoviez;
-      if (pXD) pXD.textContent = xdmovies;
       if (vCat) vCat.textContent = total;
     }
 
@@ -1888,9 +1879,7 @@
         if (currentCatalogPlatform === 'series' && item.format === 'Movie') return false;
         if (currentCatalogPlatform === 'Netflix' && item.platform !== 'Netflix') return false;
         if (currentCatalogPlatform === 'Prime Video' && item.platform !== 'Prime Video') return false;
-        if (currentCatalogPlatform === '4KHDHub Archive' && item.platform !== '4KHDHub Archive') return false;
-        if (currentCatalogPlatform === 'CloudMoviez' && item.platform !== 'CloudMoviez') return false;
-        if (currentCatalogPlatform === 'XDMovies' && item.platform !== 'XDMovies') return false;
+        if (currentCatalogPlatform === '4KHDHub Archive' && item.platform !== '4KHDHub Archive' && item.platform !== '4KHub4U') return false;
 
         // Search query
         if (q) {
@@ -1912,19 +1901,11 @@
       catalogGrid.innerHTML = filtered.map(item => {
         const isNetflix = item.platform === 'Netflix';
         const isPrime = item.platform === 'Prime Video';
-        const isCloudMoviez = item.platform === 'CloudMoviez';
-        const isXDMovies = item.platform === 'XDMovies';
         const isMovie = item.format === 'Movie';
 
         let badgeClass = 'badge-custom';
         let badgeLabel = `#${item.rank} ${item.platform}`;
-        if (isXDMovies) {
-          badgeClass = 'badge-xdmovies';
-          badgeLabel = isMovie ? `🎬 #${item.rank} XDMovies` : `📺 #${item.rank} XDMovies`;
-        } else if (isCloudMoviez) {
-          badgeClass = 'badge-cloudmoviez';
-          badgeLabel = isMovie ? `🎬 #${item.rank} Movie` : `📺 #${item.rank} Series`;
-        } else if (isMovie) {
+        if (isMovie) {
           badgeClass = 'badge-movie';
           badgeLabel = `🎬 #${item.rank} Movie`;
         } else if (isNetflix) {
@@ -2208,7 +2189,7 @@
 
     async function startCrawl(mode, startPage, endPage) {
       try {
-        const baseUrl = document.getElementById('crawlerTargetSite')?.value || 'https://huh.xdmovies.wtf';
+        const baseUrl = document.getElementById('crawlerTargetSite')?.value || 'https://4khdhub.one';
         const res = await fetch('/api/crawler/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

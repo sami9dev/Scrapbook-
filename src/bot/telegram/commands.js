@@ -90,7 +90,7 @@ export async function routeIncomingMessage(
     const isSupported =
       is4KHub4UUrl(trimmed) ||
       isHubCloudDriveUrl(trimmed) ||
-      /greenmotors|fast-share|fastdl|mediator|\?id=|cloudmoviez|unityhub/i.test(trimmed);
+      /greenmotors|fast-share|fastdl|mediator|\?id=/i.test(trimmed);
 
     if (isSupported) {
       return await jobManager.handleIncomingUrl(

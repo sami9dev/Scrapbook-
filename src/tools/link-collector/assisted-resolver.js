@@ -129,24 +129,16 @@ export class AssistedResolver {
       // Known intermediate shortener / mediator domains are NEVER destinations
       if (
         candidateHost.includes('latestnewsonline') ||
-        candidateHost.includes('xdmovies') ||
-        candidateHost.includes('cloudmoviez') ||
         candidateHost.includes('greenmotors') ||
         candidateHost.includes('fast-share')
       ) {
         return false;
       }
 
-      // Explicit storage / drive matches
+      // Explicit HubCloud drive matches
       if (
         candidateHost.includes('hubcloud') ||
-        candidateHost.includes('hubdrive') ||
-        candidatePath.includes('/drive/') ||
-        candidatePath.includes('/video/') ||
-        candidatePath.includes('/file/') ||
-        candidateHost.includes('gdlink') ||
-        candidateHost.includes('gdflix') ||
-        candidateHost.includes('pixeldrain')
+        candidatePath.includes('/drive/')
       ) {
         return true;
       }

@@ -9,12 +9,10 @@ const DATASET_PATH = path.resolve('src/data/tv-dataset.json');
  * Detects platform name from URL or metadata.
  */
 export function detectPlatformFromUrl(url) {
-  if (!url) return 'Custom';
+  if (!url) return '4KHub4U';
   const lower = url.toLowerCase();
-  if (lower.includes('cloudmoviez')) return 'CloudMoviez';
   if (lower.includes('4khdhub') || lower.includes('hdhub4u') || lower.includes('4khub4u')) return '4KHDHub Archive';
-  if (lower.includes('xdmovies') || lower.includes('xdmoviez')) return 'XDMovies';
-  return 'Custom';
+  return '4KHub4U';
 }
 
 /**

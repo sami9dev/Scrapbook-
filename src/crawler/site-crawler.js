@@ -2,9 +2,7 @@ import { fetchWithControls } from '../discovery/http-client.js';
 import { logger } from '../logging/logger.js';
 import { jobQueue } from '../queue/job-queue.js';
 import { scrapedLinksRepo } from '../database/models.js';
-import { recordInCatalog, detectPlatformFromUrl } from '../utils/catalog-store.js';
-import { isXDMoviesUrl } from '../scrapers/xdmovies/types.js';
-import { fetchXDMoviesPage } from '../scrapers/xdmovies/browser-fetch.js';
+import { recordInCatalog } from '../utils/catalog-store.js';
 import * as cheerio from 'cheerio';
 import fs from 'fs';
 import path from 'path';
@@ -61,8 +59,7 @@ export class SiteCrawler {
     this.isPaused = false;
     this.mode = options.mode || 'range';
     this.baseUrl = (options.baseUrl || this.baseUrl || 'https://4khdhub.one').replace(/\/+$/, '');
-    const isXDMovies = isXDMoviesUrl(this.baseUrl);
-    this.platform = options.platform || (isXDMovies ? 'XDMovies' : '4KHDHub Archive');
+    this.platform = '4KHDHub Archive';
     this.category = options.category || '';
     this.startPage = Math.max(1, parseInt(options.startPage || 1, 10));
     this.endPage = this.mode === 'continuous' ? 9999 : Math.max(this.startPage, parseInt(options.endPage || 5, 10));
@@ -71,7 +68,7 @@ export class SiteCrawler {
     this.lastError = null;
 
     logger.discovered(
-      `Starting Site Crawler (Pages ${this.startPage} -> ${this.endPage}, Delay: ${this.delayMs}ms, Category: "${this.category || 'All'}")`
+      `Starting 4KHub Site Crawler (Pages ${this.startPage} -> ${this.endPage}, Delay: ${this.delayMs}ms, Category: "${this.category || 'All'}")`
     );
 
     this.crawlPromise = this._runCrawlLoop();
@@ -113,27 +110,15 @@ export class SiteCrawler {
 
         let pageHtml = '';
         try {
-          const isXDMovies = isXDMoviesUrl(this.baseUrl);
-          if (isXDMovies) {
-            const res = await fetchXDMoviesPage(pageUrl, { headless: false, timeoutMs: 35000 });
-            if (res.success && res.html) {
-              pageHtml = res.html;
-            } else {
-              logger.warning(`[Site Crawler] Failed fetching XDMovies page ${this.currentPage}: ${res.error || 'Empty body'}`);
-              this.lastError = res.error;
-            }
+          const res = await fetchWithControls(pageUrl, { maxRetries: 2, timeoutMs: 12000 });
+          if (res.success && res.body) {
+            pageHtml = res.body;
           } else {
-            const res = await fetchWithControls(pageUrl, { maxRetries: 2, timeoutMs: 12000 });
-            if (res.success && res.body) {
-              pageHtml = res.body;
-            } else {
-              logger.warning(`[Site Crawler] Failed fetching page ${this.currentPage}: ${res.error || 'Empty body'}`);
-              this.lastError = res.error;
-              // If page 404s, we may have reached end of site
-              if (res.status === 404) {
-                logger.discovered(`[Site Crawler] Reached end of pagination at page ${this.currentPage}.`);
-                break;
-              }
+            logger.warning(`[Site Crawler] Failed fetching page ${this.currentPage}: ${res.error || 'Empty body'}`);
+            this.lastError = res.error;
+            if (res.status === 404) {
+              logger.discovered(`[Site Crawler] Reached end of pagination at page ${this.currentPage}.`);
+              break;
             }
           }
         } catch (fetchErr) {
@@ -200,18 +185,6 @@ export class SiteCrawler {
   }
 
   _buildPageUrl(pageNum) {
-    const isXDMovies = isXDMoviesUrl(this.baseUrl);
-    if (isXDMovies) {
-      if (pageNum === 1) {
-        return `${this.baseUrl}/`;
-      }
-      if (this.category) {
-        const cleanCat = this.category.replace(/^\/+|\/+$/g, '');
-        return `${this.baseUrl}/category.php?${cleanCat}&page=${pageNum}`;
-      }
-      return `${this.baseUrl}/?page=${pageNum}`;
-    }
-
     let cleanCat = (this.category || '').trim().replace(/^\/+|\/+$/g, '');
     if (cleanCat && !cleanCat.startsWith('category/')) {
       cleanCat = `category/${cleanCat}`;
@@ -227,36 +200,6 @@ export class SiteCrawler {
     const $ = cheerio.load(html);
     const results = [];
     const localSeen = new Set();
-    const isXDMovies = isXDMoviesUrl(pageUrl) || isXDMoviesUrl(this.baseUrl);
-
-    if (isXDMovies) {
-      $('a[href]').each((_, el) => {
-        let href = $(el).attr('href') || '';
-        if (!href || /\/category\/|\/page\/|\/tag\/|\/categories\/|#comment-/i.test(href)) return;
-        if (/\/(?:movies|series)\/[a-z0-9-]+/i.test(href)) {
-          const fullUrl = href.startsWith('http') ? href : new URL(href, pageUrl).href;
-          if (!localSeen.has(fullUrl)) {
-            localSeen.add(fullUrl);
-            const isMovie = /\/movies\//i.test(fullUrl);
-            const isSeries = /\/series\//i.test(fullUrl);
-            const rawTitle =
-              $(el).find('.title, h2, h3, .movie-title, .series-title, h4').text().trim() ||
-              $(el).attr('title') ||
-              $(el).find('img').attr('alt') ||
-              $(el).text().trim();
-            const cleanTitle = rawTitle.replace(/\s+/g, ' ').slice(0, 150).trim() || 'Untitled Release';
-
-            results.push({
-              title: cleanTitle,
-              url: fullUrl,
-              isMovie,
-              isSeries,
-            });
-          }
-        }
-      });
-      return results;
-    }
 
     $('article, .movie-card, .post-item, .thumb, a').each((_, el) => {
       let href = $(el).attr('href') || '';
@@ -300,18 +243,19 @@ export class SiteCrawler {
   }
 
   _recordInCatalog(post) {
-    const platform = this.platform || detectPlatformFromUrl(post.url);
-    recordInCatalog({
-      title: post.title,
-      url: post.url,
-      format: post.isSeries ? 'Series' : 'Movie',
-      platform,
-    });
+    try {
+      recordInCatalog({
+        title: post.title,
+        url: post.url,
+        format: post.isSeries ? 'Series' : 'Movie',
+        genre: '4KHDHub Catalog',
+        country: 'Global',
+        language: 'Multi',
+        platform: '4KHDHub Archive',
+      });
+    } catch (_) {}
   }
 }
 
 export const siteCrawler = new SiteCrawler();
-export default {
-  SiteCrawler,
-  siteCrawler,
-};
+export default siteCrawler;

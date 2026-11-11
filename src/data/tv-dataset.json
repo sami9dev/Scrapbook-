@@ -4398,36 +4398,6 @@
     "platform": "Indian Cinema"
   },
   {
-    "rank": 480,
-    "title": "Dridam",
-    "url": "https://c1.cloudmoviez.shop/movies/dridam/",
-    "format": "Movie",
-    "genre": "Thriller, Crime, Drama",
-    "country": "India",
-    "language": "Hindi, Tamil, Telugu, Kannada, Malayalam",
-    "platform": "CloudMoviez"
-  },
-  {
-    "rank": 481,
-    "title": "Muthu alias Kaattaan",
-    "url": "https://c1.cloudmoviez.shop/tvshows/muthu-alias-kaattaan/",
-    "format": "Series",
-    "genre": "Drama, Crime, Action",
-    "country": "India",
-    "language": "Tamil, Multi",
-    "platform": "CloudMoviez"
-  },
-  {
-    "rank": 482,
-    "title": "Unknown Title",
-    "url": "https://mysite.example/tv/myshow",
-    "format": "Movie",
-    "genre": "Auto Discovered",
-    "country": "Global",
-    "language": "Multi",
-    "platform": "CloudMoviez"
-  },
-  {
     "rank": 483,
     "title": "Red Notice",
     "url": "https://4khdhub.one/red-notice-movie-919/",
@@ -4478,16 +4448,6 @@
     "platform": "4KHDHub Archive"
   },
   {
-    "rank": 488,
-    "title": "Maamla Legal Hai",
-    "url": "https://c1.cloudmoviez.shop/tvshows/maamla-legal-hai/",
-    "format": "Series",
-    "genre": "Comedy, Drama",
-    "country": "India",
-    "language": "Hindi",
-    "platform": "CloudMoviez"
-  },
-  {
     "rank": 489,
     "title": "The Glass Dome",
     "url": "https://4khdhub.one/the-glass-dome-series-137/",
@@ -4496,26 +4456,6 @@
     "country": "Global",
     "language": "Multi",
     "platform": "4KHDHub Archive"
-  },
-  {
-    "rank": 490,
-    "title": "HubCloud Pack Files",
-    "url": "https://c1.cloudmoviez.shop/links/iishbf9dk1/",
-    "format": "Movie",
-    "genre": "Drama, Comedy",
-    "country": "India",
-    "language": "Hindi",
-    "platform": "CloudMoviez"
-  },
-  {
-    "rank": 491,
-    "title": "Special OPS (Season 1)",
-    "url": "https://c1.cloudmoviez.shop/tvshows/special-ops/",
-    "format": "Series",
-    "genre": "Bollywood, Crime, Drama",
-    "country": "India",
-    "language": "Hindi",
-    "platform": "CloudMoviez"
   },
   {
     "rank": 492,
@@ -4598,26 +4538,6 @@
     "platform": "4KHDHub Archive"
   },
   {
-    "rank": 500,
-    "title": "Leo",
-    "url": "https://c1.cloudmoviez.shop/movies/leo/",
-    "format": "Movie",
-    "genre": "Action, Crime, Kannada DD 5.1",
-    "country": "India",
-    "language": "Hindi",
-    "platform": "CloudMoviez"
-  },
-  {
-    "rank": 501,
-    "title": "Peddi",
-    "url": "https://c1.cloudmoviez.shop/movies/peddi/",
-    "format": "Movie",
-    "genre": "Action, Drama, South indian",
-    "country": "India",
-    "language": "Hindi",
-    "platform": "CloudMoviez"
-  },
-  {
     "rank": 502,
     "title": "Carrie",
     "url": "https://4khdhub.one/carrie-series-8290/",
@@ -4666,26 +4586,6 @@
     "country": "Global",
     "language": "Multi",
     "platform": "4KHDHub Archive"
-  },
-  {
-    "rank": 507,
-    "title": "Bhram",
-    "url": "https://c1.cloudmoviez.shop/tvshows/bhram/",
-    "format": "Series",
-    "genre": "Bollywood, Mystery, ZEE5",
-    "country": "India",
-    "language": "Hindi",
-    "platform": "CloudMoviez"
-  },
-  {
-    "rank": 508,
-    "title": "Mirai [JIO WEB-DL]",
-    "url": "https://c1.cloudmoviez.shop/movies/mirai/",
-    "format": "Movie",
-    "genre": "Action, Adventure, Bengali",
-    "country": "India",
-    "language": "Hindi",
-    "platform": "CloudMoviez"
   },
   {
     "rank": 509,
@@ -4856,16 +4756,6 @@
     "country": "Global",
     "language": "Multi",
     "platform": "4KHDHub Archive"
-  },
-  {
-    "rank": 526,
-    "title": "Vikrant Rona",
-    "url": "https://c1.cloudmoviez.shop/movies/vikrant-rona/",
-    "format": "Movie",
-    "genre": "Action, Disney+ Hotstar, Mystery",
-    "country": "India",
-    "language": "Hindi",
-    "platform": "CloudMoviez"
   },
   {
     "rank": 527,
@@ -5598,53 +5488,63 @@
     "platform": "4KHDHub Archive"
   },
   {
-    "rank": 600,
-    "title": "Gajab Raat",
-    "url": "https://huh.xdmovies.wtf/movies/gajab-raat-2160p-1080p-hindi-tamil-download-1453407",
+    "rank": 606,
+    "title": "Dexter: Resurrection",
+    "url": "https://4khdhub.one/dexter-resurrection-series-2297/",
+    "format": "Series",
+    "genre": "Auto Discovered",
+    "country": "Global",
+    "language": "Multi",
+    "platform": "4KHub4U"
+  },
+  {
+    "rank": 607,
+    "title": "Avatar",
+    "url": "https://4khdhub.one/avatar-movie-774/",
     "format": "Movie",
     "genre": "Auto Discovered",
     "country": "Global",
     "language": "Multi",
-    "platform": "XDMovies"
+    "platform": "4KHub4U"
   },
   {
-    "rank": 601,
-    "title": "Ronth",
-    "url": "https://huh.xdmovies.wtf/movies/ronth-2160p-1080p-hindi-malayalam-download-1339055",
+    "rank": 608,
+    "title": "Campus Drivers",
+    "url": "https://4khdhub.one/campus-drivers-series-8509/",
+    "format": "Series",
+    "genre": "Auto Discovered",
+    "country": "Global",
+    "language": "Multi",
+    "platform": "4KHub4U"
+  },
+  {
+    "rank": 609,
+    "title": "Heart of the Beast",
+    "url": "https://4khdhub.one/heart-of-the-beast-movie-8507/",
     "format": "Movie",
     "genre": "Auto Discovered",
     "country": "Global",
     "language": "Multi",
-    "platform": "XDMovies"
+    "platform": "4KHub4U"
   },
   {
-    "rank": 602,
-    "title": "It's a Medical Miracle",
-    "url": "https://huh.xdmovies.wtf/movies/its-a-medical-miracle-2160p-1080p-malayalam-download-1422822",
+    "rank": 610,
+    "title": "The Body",
+    "url": "https://4khdhub.one/the-body-series-8534/",
+    "format": "Series",
+    "genre": "Auto Discovered",
+    "country": "Global",
+    "language": "Multi",
+    "platform": "4KHub4U"
+  },
+  {
+    "rank": 594,
+    "title": "The Good Lawyer",
+    "url": "https://4khdhub.one/the-good-lawyer-movie-8524/",
     "format": "Movie",
     "genre": "Auto Discovered",
     "country": "Global",
     "language": "Multi",
-    "platform": "XDMovies"
-  },
-  {
-    "rank": 603,
-    "title": "Bāhubali 2: The Conclusion",
-    "url": "https://c2.cloudmoviez.space/movies/bahubali-2-the-conclusion/",
-    "format": "Movie",
-    "genre": "Action, Adventure, Fantasy",
-    "country": "India",
-    "language": "Hindi",
-    "platform": "CloudMoviez"
-  },
-  {
-    "rank": 604,
-    "title": "Runner",
-    "url": "https://huh.xdmovies.wtf/movies/runner-1080p-720p-hindi-english-download-1377237",
-    "format": "Movie",
-    "genre": "Auto Discovered",
-    "country": "Global",
-    "language": "Multi",
-    "platform": "XDMovies"
+    "platform": "4KHub4U"
   }
 ]

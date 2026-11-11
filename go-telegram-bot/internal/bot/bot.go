@@ -104,7 +104,7 @@ Paste single or multiple download links (separated by newlines). The bot will di
 func (b *Bot) handleCache(c tele.Context) error {
 	args := c.Args()
 	if len(args) < 2 {
-		return c.Send("ℹ️ <b>Manual Cache Ingestion:</b>\n\nWhen a link presents a Cloudflare/Turnstile challenge, open it in your browser to get the final HubCloud URL, then send:\n<code>/cache &lt;mediator_url&gt; &lt;hubcloud_url&gt;</code>\n\nExample:\n<code>/cache https://link.xdmovies.wtf/download/xyz https://hubcloud.ist/drive/abc</code>", tele.ModeHTML)
+		return c.Send("ℹ️ <b>Manual Cache Ingestion:</b>\n\nWhen a link presents a challenge, open it in your browser to get the final HubCloud URL, then send:\n<code>/cache &lt;mediator_url&gt; &lt;hubcloud_url&gt;</code>\n\nExample:\n<code>/cache https://4khdhub.one/download-link https://hubcloud.pw/drive/abc</code>", tele.ModeHTML)
 	}
 
 	mediatorURL := strings.TrimSpace(args[0])
