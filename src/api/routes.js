@@ -42,9 +42,13 @@ router.post('/scrape', async (req, res) => {
         matchedTitle = catalogMatch.title;
         logger.discovered(`Catalog match for "${trimmedInput}" -> ${targetUrl} (${catalogMatch.platform})`);
       } else {
-        // 2. Search 4KHDHub
+        // 2. Search 4KHDHub & XDMovies
         const { search4KHDHub } = await import('../providers/4khdhub/search.js');
-        const hubResult = await search4KHDHub(trimmedInput).catch(() => null);
+        const { searchXDMovies } = await import('../scrapers/xdmovies/search.js');
+        const [hubResult, xdResult] = await Promise.all([
+          search4KHDHub(trimmedInput).catch(() => null),
+          searchXDMovies(trimmedInput).catch(() => null),
+        ]);
 
         let chosenResult = null;
         let chosenPlatform = '';
@@ -52,11 +56,14 @@ router.post('/scrape', async (req, res) => {
         if (hubResult?.success && hubResult?.bestMatch) {
           chosenResult = hubResult.bestMatch;
           chosenPlatform = '4KHDHub';
+        } else if (xdResult?.success && xdResult?.bestMatch) {
+          chosenResult = xdResult.bestMatch;
+          chosenPlatform = 'XDMovies';
         }
 
         if (!chosenResult) {
           return res.status(404).json({
-            error: `No movie or series found on 4KHDHub for title: "${trimmedInput}". Please enter a valid URL or try another title.`,
+            error: `No movie or series found on 4KHDHub or XDMovies for title: "${trimmedInput}". Please enter a valid URL or try another title.`,
           });
         }
         targetUrl = chosenResult.url;
@@ -115,69 +122,116 @@ router.post('/scrape-page', async (req, res) => {
 
   const targetUrl = url.trim();
   const scrapeStart = Date.now();
-  logger.log('4KHub4U', `[scrape-page] Starting fast-path HTTP fetch for: ${targetUrl}`);
+  const isXDMovies = /xdmovies\.[a-z0-9.]+|huh\.xdmovies|link\.xdmovies|top\.xdmovies/i.test(targetUrl);
+  const platform = isXDMovies ? 'XDMovies' : '4KHub4U';
+  logger.log(platform, `[scrape-page] Starting fast-path fetch for: ${targetUrl}`);
 
   try {
-    const fetchController = new AbortController();
-    const fetchTimeout = setTimeout(() => fetchController.abort(new Error('HTTP fetch timed out')), 9000);
-    fetchTimeout.unref?.();
+    let html = '';
 
-    let pageResponse;
-    try {
-      pageResponse = await fetch(targetUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Cache-Control': 'no-cache',
-        },
-        signal: fetchController.signal,
-      });
-    } finally {
-      clearTimeout(fetchTimeout);
+    if (isXDMovies) {
+      // 1. Try quick HTTP fetch first (< 4s)
+      try {
+        const pageResponse = await fetch(targetUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Referer': 'https://huh.xdmovies.wtf/',
+          },
+          signal: AbortSignal.timeout(4000),
+        });
+        if (pageResponse.ok) {
+          const body = await pageResponse.text();
+          if (!body.includes('Just a moment...') && !body.includes('cf-turnstile') && !body.includes('security verification')) {
+            html = body;
+          }
+        }
+      } catch {}
+
+      // 2. If Cloudflare challenge or fetch failed, use stealth fetcher
+      if (!html || html.length < 500) {
+        logger.log('XDMovies', `[scrape-page] Fetching XDMovies page via stealth resolver...`);
+        const { fetchXDMoviesPage } = await import('../scrapers/xdmovies/browser-fetch.js');
+        const bfRes = await fetchXDMoviesPage(targetUrl, { timeoutMs: 65000 });
+        if (bfRes.success && bfRes.html && bfRes.html.length > 500) {
+          html = bfRes.html;
+        } else {
+          return res.json({
+            success: false,
+            challenge: true,
+            error: bfRes.error || 'Failed to bypass XDMovies security verification',
+          });
+        }
+      }
+    } else {
+      const fetchController = new AbortController();
+      const fetchTimeout = setTimeout(() => fetchController.abort(new Error('HTTP fetch timed out')), 9000);
+      fetchTimeout.unref?.();
+
+      let pageResponse;
+      try {
+        pageResponse = await fetch(targetUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Cache-Control': 'no-cache',
+          },
+          signal: fetchController.signal,
+        });
+      } finally {
+        clearTimeout(fetchTimeout);
+      }
+
+      if (!pageResponse.ok && pageResponse.status !== 200) {
+        logger.log('4KHub4U', `[scrape-page] HTTP status ${pageResponse.status} for ${targetUrl}`);
+        return res.json({
+          success: false,
+          challenge: pageResponse.status === 403 || pageResponse.status === 503,
+          error: `HTTP ${pageResponse.status}`,
+        });
+      }
+
+      html = await pageResponse.text();
+
+      // Check for Cloudflare challenge markers
+      const isChallenge =
+        html.includes('Just a moment...') ||
+        html.includes('cf-turnstile') ||
+        html.includes('challenges.cloudflare.com') ||
+        html.includes('Attention Required! | Cloudflare');
+
+      if (isChallenge) {
+        logger.log('4KHub4U', `[scrape-page] Cloudflare challenge detected on ${targetUrl}. Fast aborting without browser.`);
+        return res.json({
+          success: false,
+          challenge: true,
+          error: 'Cloudflare challenge page detected',
+        });
+      }
     }
 
-    if (!pageResponse.ok && pageResponse.status !== 200) {
-      logger.log('4KHub4U', `[scrape-page] HTTP status ${pageResponse.status} for ${targetUrl}`);
-      return res.json({
-        success: false,
-        challenge: pageResponse.status === 403 || pageResponse.status === 503,
-        error: `HTTP ${pageResponse.status}`,
-      });
-    }
-
-    const html = await pageResponse.text();
-
-    // Check for Cloudflare challenge markers
-    const isChallenge =
-      html.includes('Just a moment...') ||
-      html.includes('cf-turnstile') ||
-      html.includes('challenges.cloudflare.com') ||
-      html.includes('Attention Required! | Cloudflare');
-
-    if (isChallenge) {
-      logger.log('4KHub4U', `[scrape-page] Cloudflare challenge detected on ${targetUrl}. Fast aborting without browser.`);
-      return res.json({
-        success: false,
-        challenge: true,
-        error: 'Cloudflare challenge page detected',
-      });
-    }
-
-    // Parse with 4KHub4U Catalogue Parser
-    const { parse4KHubCatalogue, resolveCatalogueLinks } = await import('../scrapers/4khub4u/catalogue.js');
+    // Parse according to platform
+    let catalogue;
     const { isHubCloudDriveUrl, extractHubCloudDriveId } = await import('../providers/hubcloud/validator.js');
     const { recordInCatalog } = await import('../utils/catalog-store.js');
 
-    const rawCatalogue = parse4KHubCatalogue(html, targetUrl);
-    const catalogue = await resolveCatalogueLinks(rawCatalogue, { concurrency: 10, timeout: 5000 }).catch(() => rawCatalogue);
+    if (isXDMovies) {
+      const { parseXDMoviesCatalogue } = await import('../scrapers/xdmovies/catalogue.js');
+      catalogue = parseXDMoviesCatalogue(html, targetUrl);
+    } else {
+      const { parse4KHubCatalogue, resolveCatalogueLinks } = await import('../scrapers/4khub4u/catalogue.js');
+      const rawCatalogue = parse4KHubCatalogue(html, targetUrl);
+      catalogue = await resolveCatalogueLinks(rawCatalogue, { concurrency: 10, timeout: 5000 }).catch(() => rawCatalogue);
+    }
+
     const isMoviePage = catalogue.type === 'movie';
 
     recordInCatalog({
-      title: catalogue.title || '4KHub4U Content',
+      title: catalogue.title || `${platform} Content`,
       url: targetUrl,
       format: isMoviePage ? 'Movie' : 'Series',
-      platform: '4KHub4U',
+      platform,
     });
 
     const allReleases =
@@ -224,7 +278,7 @@ router.post('/scrape-page', async (req, res) => {
       }
     }
 
-    logger.log('TIMING', `[catalogue-query] 4KHub4U fast-path scrape url=${targetUrl} totalReleases=${savedRecords.length} took=${Date.now() - scrapeStart}ms`);
+    logger.log('TIMING', `[catalogue-query] ${platform} fast-path scrape url=${targetUrl} totalReleases=${savedRecords.length} took=${Date.now() - scrapeStart}ms`);
 
     return res.json({
       success: true,
@@ -242,7 +296,7 @@ router.post('/scrape-page', async (req, res) => {
 
 /**
  * GET /api/search?q=<query>
- * Searches 4KHDHub for matching movie or series titles.
+ * Searches 4KHDHub and XDMovies for matching movie or series titles.
  */
 router.get('/search', async (req, res) => {
   const query = (req.query.q || req.query.query || '').trim();
@@ -252,19 +306,32 @@ router.get('/search', async (req, res) => {
 
   try {
     const { search4KHDHub } = await import('../providers/4khdhub/search.js');
-    const hubRes = await search4KHDHub(query).catch(() => null);
+    const { searchXDMovies } = await import('../scrapers/xdmovies/search.js');
+
+    const [hubRes, xdRes] = await Promise.all([
+      search4KHDHub(query).catch(() => null),
+      searchXDMovies(query).catch(() => null),
+    ]);
 
     const results = [];
     if (hubRes?.results) {
       results.push(...hubRes.results.map((r) => ({ ...r, provider: '4KHDHub' })));
     }
+    if (xdRes?.results) {
+      results.push(...xdRes.results.map((r) => ({ ...r, provider: 'XDMovies' })));
+    }
 
-    const bestMatch = (hubRes?.bestMatch)
-      ? { ...hubRes.bestMatch, provider: '4KHDHub' }
-      : results[0] || null;
+    let bestMatch = null;
+    if (hubRes?.bestMatch) {
+      bestMatch = { ...hubRes.bestMatch, provider: '4KHDHub' };
+    } else if (xdRes?.bestMatch) {
+      bestMatch = { ...xdRes.bestMatch, provider: 'XDMovies' };
+    } else if (results.length > 0) {
+      bestMatch = results[0];
+    }
 
     return res.json({
-      success: true,
+      success: results.length > 0,
       query,
       results,
       bestMatch,
@@ -969,25 +1036,44 @@ router.post('/resolve-link', async (req, res) => {
       });
     }
 
-    const { resolveMediatorHttpFirst } = await import('../resolvers/mediator/http-first.js');
-    releaseResolverSlot = await mediatorResolutionSemaphore.acquire(signal);
-    if (signal.aborted || res.destroyed) return;
-    const resolution = await resolveMediatorHttpFirst(urlToResolve, {
-      meta: link || {},
-      countdownTimeout: 35000,
-      navigationTimeout: 20000,
-    });
+    const isXDMoviesMediator = /link\.xdmovies\.[a-z0-9.]+|latestnewsonline\.[a-z0-9.]+|xdmovies\.[a-z0-9.]+\/download/i.test(urlToResolve);
+    let resolution;
+
+    if (isXDMoviesMediator) {
+      const { resolveXDMoviesMediator } = await import('../scrapers/xdmovies/mediator.js');
+      resolution = await resolveXDMoviesMediator(urlToResolve, {
+        signal,
+        timeoutMs: 125000,
+      });
+    } else {
+      const { resolveMediatorHttpFirst } = await import('../resolvers/mediator/http-first.js');
+      releaseResolverSlot = await mediatorResolutionSemaphore.acquire(signal);
+      if (signal.aborted || res.destroyed) return;
+      resolution = await resolveMediatorHttpFirst(urlToResolve, {
+        meta: link || {},
+        countdownTimeout: 35000,
+        navigationTimeout: 20000,
+      });
+    }
     if (signal.aborted || res.destroyed) return;
 
+    // STRICT FILTER: Discard any HubDrive destination
+    if (resolution.success && resolution.destination && /hubdrive/i.test(resolution.destination)) {
+      return res.status(400).json({
+        success: false,
+        error: 'HubDrive link resolved, but only direct HubCloud is supported.',
+      });
+    }
+
     if (resolution.success && resolution.destination) {
-      // [OPT-5] Return resolved destination immediately to Telegram bot
+      // Return resolved destination immediately to Telegram bot / caller
       const driveId = extractHubCloudDriveId(resolution.destination);
-      const earlyTitle = resolution.meta?.filename || resolution.meta?.title || link?.filename || link?.title || '';
+      const earlyTitle = resolution.metadata?.title || resolution.meta?.filename || resolution.meta?.title || link?.filename || link?.title || '';
       res.json({
         success: true,
         destination: resolution.destination,
         driveId,
-        state: resolution.state,
+        state: resolution.state || 'RESOLVED',
         title: earlyTitle,
       });
 

@@ -73,20 +73,20 @@ func (b *Bot) registerHandlers() {
 }
 
 func (b *Bot) handleStart(c tele.Context) error {
-	msg := `⚡ <b>High-Speed Golang Link & Media Bot</b>
+	msg := `⚡ <b>High-Speed Link & Media Bot (4KHub4U + XDMovies)</b>
 
 Powered by Go Goroutines, Channels, and In-Memory Caching:
-• <b>Movies & Series:</b> Send any movie/series URL to get <b>ALL</b> releases with full titles & direct HubCloud links!
+• <b>4KHub4U & XDMovies:</b> Send any movie/series URL to get <b>ALL</b> releases with full titles & direct HubCloud links!
 • <b>Auto-Scrape:</b> Automatically scrapes new titles on-demand if not yet cached!
-• <b>Parallel Shortener Resolver:</b> Resolves mediator links concurrently.
+• <b>Parallel Shortener Resolver:</b> Resolves mediator links (GreenMotors / XDMovies) concurrently into direct HubCloud links.
 • <b>Microsecond Cache:</b> Stored links return in &lt;1ms.
 
 👉 <b>Try sending:</b>
-1. Any Movie or Series title: <code>The Good Lawyer</code> or <code>Avatar</code>
-2. A 4KHDHub / 4KHub4U Movie link:
-<code>https://4khdhub.one/the-good-lawyer-movie-8524/</code>
-3. A 4KHDHub / 4KHub4U Series link:
-<code>https://4khdhub.one/dexter-resurrection-series-2297/</code>`
+1. Any Movie or Series title: <code>Campus Drivers</code>, <code>Mirzapur</code>, or <code>Avatar</code>
+2. A 4KHDHub / 4KHub4U link:
+<code>https://4khdhub.one/dexter-resurrection-series-2297/</code>
+3. An XDMovies link:
+<code>https://huh.xdmovies.wtf/series/campus-drivers-2160p-1080p-hindi-french-download-303044</code>`
 	return c.Send(msg, tele.ModeHTML)
 }
 
@@ -270,6 +270,9 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 					name = m.Title
 				}
 				dest := m.ProviderURL
+				if dest == "" {
+					dest = m.MediatorURL
+				}
 				sizeStr := m.SizeDisplay
 				sizeLine := ""
 				if sizeStr != "" {
@@ -883,8 +886,12 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 					tag = "🔄"
 				}
 				if strings.Contains(dest, "hubcloud") {
-					oSB.WriteString(fmt.Sprintf("<b>#%d:</b> %s <a href=\"%s\"><b>Direct HubCloud Link</b></a>\n<code>%s</code>\n⚡ Speed: %s\n\n",
-						i+1, tag, dest, dest, formatDuration(res.Duration)))
+					titleLine := ""
+					if res.Title != "" {
+						titleLine = fmt.Sprintf("📄 <code>%s</code>\n", html.EscapeString(res.Title))
+					}
+					oSB.WriteString(fmt.Sprintf("<b>#%d:</b> %s <a href=\"%s\"><b>Direct HubCloud Link</b></a>\n%s<code>%s</code>\n⚡ Speed: %s\n\n",
+						i+1, tag, dest, titleLine, dest, formatDuration(res.Duration)))
 				} else {
 					oSB.WriteString(fmt.Sprintf("<b>#%d:</b> ⚠️ <i>Skipped non-HubCloud link</i>\n\n", i+1))
 				}

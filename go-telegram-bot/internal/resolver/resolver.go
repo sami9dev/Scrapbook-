@@ -119,6 +119,11 @@ func (r *Resolver) IsContentPage(rawURL string) bool {
 			return true
 		}
 	}
+	if strings.Contains(lower, "xdmovies.") || strings.Contains(lower, "xdmoviez.") {
+		if !strings.Contains(lower, "/download/") && !strings.Contains(lower, "/?s=") {
+			return true
+		}
+	}
 	return false
 }
 
@@ -349,7 +354,11 @@ func extractDisplayTitle(rawTitle string) string {
 
 func isIntermediateMediator(urlStr string) bool {
 	lower := strings.ToLower(urlStr)
-	return strings.Contains(lower, "latestnewsonline.sbs") || strings.Contains(lower, "greenmotors")
+	return strings.Contains(lower, "latestnewsonline") ||
+		strings.Contains(lower, "greenmotors") ||
+		strings.Contains(lower, "link.xdmovies") ||
+		strings.Contains(lower, "fast-share") ||
+		strings.Contains(lower, "fastdl")
 }
 
 // Resolve processes an individual URL, checking 3-tier cache first, then resolving
@@ -891,7 +900,7 @@ func (r *Resolver) scrapeViaFastPath(ctx context.Context, rawURL string) (*Serie
 		return nil, err
 	}
 
-	fastCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	fastCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
 	reqURL := fmt.Sprintf("%s/api/scrape-page", r.baseAPI)

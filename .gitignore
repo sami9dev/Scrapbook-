@@ -14,6 +14,8 @@ dist/
 *.log
 *.exe
 *.pid
+__pycache__/
+*.pyc
 .DS_Store
 data/in_memory_scrape_jobs.json
 scratch/

@@ -1,4 +1,9 @@
-process.env.PLAYWRIGHT_BROWSERS_PATH = process.env.PLAYWRIGHT_BROWSERS_PATH || '0';
+import dns from 'node:dns';
+dns.setDefaultResultOrder('ipv4first');
+
+if (process.platform !== 'win32') {
+  process.env.PLAYWRIGHT_BROWSERS_PATH = process.env.PLAYWRIGHT_BROWSERS_PATH || '0';
+}
 
 import express from 'express';
 import path from 'node:path';

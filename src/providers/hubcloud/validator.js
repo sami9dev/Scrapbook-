@@ -98,9 +98,18 @@ export async function fetchHubCloudMetadata(hubcloudUrl, options = {}) {
   }
 
   try {
-    const res = await fetchWithControls(hubcloudUrl, {
-      maxRetries: options.maxRetries ?? 0,
-      timeout: options.timeout ?? 3500,
+    let target = hubcloudUrl;
+    try {
+      const u = new URL(hubcloudUrl);
+      if (u.hostname !== 'hubcloud.pw' && u.pathname.startsWith('/drive/')) {
+        u.hostname = 'hubcloud.pw';
+        target = u.toString();
+      }
+    } catch {}
+
+    const res = await fetchWithControls(target, {
+      maxRetries: options.maxRetries ?? 1,
+      timeout: options.timeout ?? 6000,
     });
     if (!res.success || !res.body) {
       return null;
@@ -120,9 +129,17 @@ export async function fetchHubCloudMetadata(hubcloudUrl, options = {}) {
       return null;
     }
 
+    const rawSize = $('#size').first().text().trim() ||
+                    (res.body.match(/id=["']size["']>([^<]+)</i)?.[1] || '').trim() ||
+                    (res.body.match(/File\s*Size[^>]*>([^<]+)</i)?.[1] || '').trim() ||
+                    null;
+    const sizeMatch = rawSize ? rawSize.match(/\b([0-9.]+\s*[KMGT]?B)\b/i) : null;
+    const fileSize = sizeMatch ? sizeMatch[1] : (rawSize || null);
+
     return {
       filename,
       title: filename,
+      fileSize,
     };
   } catch {
     return null;
