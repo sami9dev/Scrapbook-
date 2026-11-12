@@ -322,12 +322,19 @@ router.get('/search', async (req, res) => {
     }
 
     let bestMatch = null;
-    if (hubRes?.bestMatch) {
+    const lowerQuery = query.toLowerCase();
+    if (hubRes?.bestMatch && xdRes?.bestMatch) {
+      const hubExact = hubRes.bestMatch.title.toLowerCase() === lowerQuery;
+      const xdExact = xdRes.bestMatch.title.toLowerCase() === lowerQuery;
+      if (xdExact && !hubExact) {
+        bestMatch = { ...xdRes.bestMatch, provider: 'XDMovies' };
+      } else {
+        bestMatch = { ...hubRes.bestMatch, provider: '4KHDHub' };
+      }
+    } else if (hubRes?.bestMatch) {
       bestMatch = { ...hubRes.bestMatch, provider: '4KHDHub' };
     } else if (xdRes?.bestMatch) {
       bestMatch = { ...xdRes.bestMatch, provider: 'XDMovies' };
-    } else if (results.length > 0) {
-      bestMatch = results[0];
     }
 
     return res.json({

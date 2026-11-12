@@ -11,18 +11,15 @@ import (
 
 func main() {
 	c := cache.New(time.Hour)
-	r := resolver.New(c, "http://127.0.0.1:3000/api/resolve-link", "", "", 30*time.Second)
+	r := resolver.New(c, "http://127.0.0.1:3000/api/resolve-link", "", "", 90*time.Second)
 
 	testUrls := []string{
-		"https://4khdhub.one/campus-drivers-series-8509/",
-		"https://4khdhub.one/the-good-lawyer-movie-8524/",
-		"https://4khdhub.one/avatar-movie-774/",
-		"https://4khdhub.one/dexter-resurrection-series-2297/",
+		"https://huh.xdmovies.wtf/series/campus-drivers-2160p-1080p-hindi-french-download-303044",
 	}
 
 	for _, u := range testUrls {
 		fmt.Println("\nTesting GetSeriesReleases for:", u)
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		start := time.Now()
 		sr, err := r.GetSeriesReleases(ctx, u)
 		cancel()

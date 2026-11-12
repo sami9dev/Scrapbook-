@@ -226,7 +226,7 @@ func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*Serie
 	isMovie := strings.Contains(strings.ToLower(rawURL), "/movies/") || strings.Contains(strings.ToLower(rawURL), "/movie/") || strings.Contains(strings.ToLower(rawURL), "-movie-") || strings.Contains(strings.ToLower(rawURL), "-movie/") || (len(matched) > 0 && matched[0].Scope == "movie")
 
 	sr := &SeriesResult{
-		Title:   extractDisplayTitle(matched[0].Title),
+		Title:   extractDisplayTitle(matched[0].Title, matched[0].Filename),
 		URL:     rawURL,
 		IsMovie: isMovie,
 		Total:   0,
@@ -290,14 +290,14 @@ func (r *Resolver) SearchByTitle(ctx context.Context, titleQuery string) (*Serie
 		} else if err != nil {
 			log.Printf("[Dynamic Search] error: %v", err)
 		}
-		return nil, fmt.Errorf("no title matching '<b>%s</b>'.\n\n👉 <i>Send a 4KHub4U page link or try another title!</i>",
+		return nil, fmt.Errorf("no title matching '<b>%s</b>'.\n\n👉 <i>Send a 4KHub4U or XDMovies page link or try another title!</i>",
 			html.EscapeString(titleQuery))
 	}
 
 	isMovie := strings.Contains(strings.ToLower(matched[0].SourceURL), "/movies/") || matched[0].Scope == "movie"
 
 	sr := &SeriesResult{
-		Title:   extractDisplayTitle(matched[0].Title),
+		Title:   extractDisplayTitle(matched[0].Title, matched[0].Filename),
 		URL:     matched[0].SourceURL,
 		IsMovie: isMovie,
 		Total:   0,
@@ -339,17 +339,26 @@ func extractSlugTitle(slug string) string {
 	return strings.Trim(slug, "-_ ")
 }
 
-func extractDisplayTitle(rawTitle string) string {
-	for _, sep := range []string{"S0", "2160p", "1080p", "720p", "480p", "("} {
-		if idx := strings.Index(strings.ToLower(rawTitle), strings.ToLower(sep)); idx != -1 {
-			rawTitle = rawTitle[:idx]
+func extractDisplayTitle(rawTitle, filename string) string {
+	clean := func(s string) string {
+		for _, sep := range []string{"S0", "2160p", "1080p", "720p", "480p", "("} {
+			if idx := strings.Index(strings.ToLower(s), strings.ToLower(sep)); idx > 0 {
+				s = s[:idx]
+			}
 		}
+		s = strings.ReplaceAll(s, ".", " ")
+		return strings.Trim(s, " .-_()[]")
 	}
-	cleaned := strings.Trim(rawTitle, " .-_()[]")
-	if cleaned == "" {
+
+	res := clean(rawTitle)
+	lower := strings.ToLower(res)
+	if res == "" || lower == "title" || lower == "1080p" || lower == "2160p" || lower == "720p" || lower == "480p" || strings.HasPrefix(lower, "1080p ") || strings.HasPrefix(lower, "2160p ") {
+		res = clean(filename)
+	}
+	if res == "" {
 		return "Title"
 	}
-	return cleaned
+	return res
 }
 
 func isIntermediateMediator(urlStr string) bool {
@@ -938,8 +947,13 @@ func (r *Resolver) scrapeViaFastPath(ctx context.Context, rawURL string) (*Serie
 
 	isMovie := strings.EqualFold(res.Type, "movie") || strings.Contains(strings.ToLower(rawURL), "/movies/")
 
+	firstFilename := ""
+	if len(res.Records) > 0 {
+		firstFilename = res.Records[0].Filename
+	}
+
 	sr := &SeriesResult{
-		Title:   extractDisplayTitle(res.Title),
+		Title:   extractDisplayTitle(res.Title, firstFilename),
 		URL:     rawURL,
 		IsMovie: isMovie,
 		Total:   len(res.Records),

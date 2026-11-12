@@ -16,7 +16,7 @@ func main() {
 	memCache := cache.NewMultiTierCacheWithREST(nil, nil, "", "")
 	resEngine := resolver.New(memCache, cfg.LocalResolverAPI, cfg.RustWorkerURL, cfg.TelegramBotToken, cfg.RequestTimeout)
 
-	testTitles := []string{"avatar", "the good lawyer"}
+	testTitles := []string{"avatar", "the good lawyer", "campus drivers"}
 
 	for _, title := range testTitles {
 		fmt.Printf("\n=== Testing SearchByTitle for: '%s' ===\n", title)

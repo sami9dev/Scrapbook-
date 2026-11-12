@@ -180,7 +180,7 @@ func (b *Bot) handleTitleSearch(c tele.Context, query string) error {
 	statusMsg, _ := b.teleBot.Send(c.Recipient(), fmt.Sprintf("🔍 <i>Searching catalogue for '<b>%s</b>'...</i>", html.EscapeString(query)), tele.ModeHTML)
 
 	start := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
 	result, err := b.resolver.SearchByTitle(ctx, query)
@@ -209,7 +209,7 @@ func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
 
 	if err != nil {
 		log.Printf("[Bot] GetSeriesReleases error: %v", err)
-		errMsg := fmt.Sprintf("❌ <b>Could not retrieve releases for:</b>\n<code>%s</code>\n\n<i>Reason: %s</i>\n\n👉 <i>Try sending another 4KHub4U link or movie/series title!</i>",
+		errMsg := fmt.Sprintf("❌ <b>Could not retrieve releases for:</b>\n<code>%s</code>\n\n<i>Reason: %s</i>\n\n👉 <i>Try sending another 4KHub4U or XDMovies link or movie/series title!</i>",
 			html.EscapeString(contentURL), html.EscapeString(err.Error()))
 		if statusMsg != nil {
 			if _, editErr := b.teleBot.Edit(statusMsg, errMsg, tele.ModeHTML); editErr != nil {
@@ -270,16 +270,25 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 					name = m.Title
 				}
 				dest := m.ProviderURL
-				if dest == "" {
-					dest = m.MediatorURL
+				if dest == "" && m.MediatorURL != "" {
+					if cached, hit, err := b.cache.Get(context.Background(), m.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
+						dest = cached
+					} else {
+						dest = m.MediatorURL
+					}
 				}
 				sizeStr := m.SizeDisplay
 				sizeLine := ""
 				if sizeStr != "" {
 					sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
 				}
-				sb.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
-					html.EscapeString(name), sizeLine, dest, dest))
+				if isDirectHubCloud(dest) {
+					sb.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>Direct HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
+						html.EscapeString(name), sizeLine, dest, dest))
+				} else {
+					sb.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ 🔗 <b>Mediator Link:</b> <a href=\"%s\">%s</a>\n\n",
+						html.EscapeString(name), sizeLine, dest, dest))
+				}
 			}
 		}
 
@@ -394,16 +403,25 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 						name = p.Title
 					}
 					dest := p.ProviderURL
-					if dest == "" {
-						dest = p.MediatorURL
+					if dest == "" && p.MediatorURL != "" {
+						if cached, hit, err := b.cache.Get(context.Background(), p.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
+							dest = cached
+						} else {
+							dest = p.MediatorURL
+						}
 					}
 					sizeStr := p.SizeDisplay
 					sizeLine := ""
 					if sizeStr != "" {
 						sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
 					}
-					qSB.WriteString(fmt.Sprintf("📁 <code>%s</code>\n%s   └ ⚡ <b>HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
-						html.EscapeString(name), sizeLine, dest, dest))
+					if isDirectHubCloud(dest) {
+						qSB.WriteString(fmt.Sprintf("📁 <code>%s</code>\n%s   └ ⚡ <b>Direct HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
+							html.EscapeString(name), sizeLine, dest, dest))
+					} else {
+						qSB.WriteString(fmt.Sprintf("📁 <code>%s</code>\n%s   └ 🔗 <b>Mediator Link:</b> <a href=\"%s\">%s</a>\n\n",
+							html.EscapeString(name), sizeLine, dest, dest))
+					}
 				}
 			}
 
@@ -419,16 +437,25 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 						name = ep.Title
 					}
 					dest := ep.ProviderURL
-					if dest == "" {
-						dest = ep.MediatorURL
+					if dest == "" && ep.MediatorURL != "" {
+						if cached, hit, err := b.cache.Get(context.Background(), ep.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
+							dest = cached
+						} else {
+							dest = ep.MediatorURL
+						}
 					}
 					sizeStr := ep.SizeDisplay
 					sizeLine := ""
 					if sizeStr != "" {
 						sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
 					}
-					qSB.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
-						html.EscapeString(name), sizeLine, dest, dest))
+					if isDirectHubCloud(dest) {
+						qSB.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>Direct HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
+							html.EscapeString(name), sizeLine, dest, dest))
+					} else {
+						qSB.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ 🔗 <b>Mediator Link:</b> <a href=\"%s\">%s</a>\n\n",
+							html.EscapeString(name), sizeLine, dest, dest))
+					}
 				}
 			}
 
@@ -461,6 +488,11 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 	}
 
 	return nil
+}
+
+func isDirectHubCloud(urlStr string) bool {
+	lower := strings.ToLower(urlStr)
+	return strings.Contains(lower, "hubcloud") && (strings.Contains(lower, "/drive/") || strings.Contains(lower, "/file/"))
 }
 
 func getReleaseCategory(filename, quality string) (string, int) {
@@ -836,7 +868,7 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 					if sizeStr != "" {
 						sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
 					}
-					qSB.WriteString(fmt.Sprintf("📁 <code>%s</code>\n%s   └ ⚡ <b>HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
+					qSB.WriteString(fmt.Sprintf("📁 <code>%s</code>\n%s   └ ⚡ <b>Direct HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
 						html.EscapeString(name), sizeLine, dest, dest))
 				}
 			}
@@ -858,7 +890,7 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 					if sizeStr != "" {
 						sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
 					}
-					qSB.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
+					qSB.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>Direct HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
 						html.EscapeString(name), sizeLine, dest, dest))
 				}
 			}

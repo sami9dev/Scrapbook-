@@ -88,9 +88,21 @@ export async function search4KHDHub(query, options = {}) {
       return { success: true, query: trimmed, results: [], bestMatch: null };
     }
 
-    // Rank results by relevance to the query
+    // Filter results to ensure they match at least one search token
     const lowerQuery = trimmed.toLowerCase();
-    results.sort((a, b) => {
+    const queryTokens = lowerQuery.split(/\s+/).filter(Boolean);
+    const relevantResults = results.filter((r) => {
+      const lower = r.title.toLowerCase();
+      return queryTokens.some((t) => lower.includes(t));
+    });
+
+    if (relevantResults.length === 0) {
+      logger.discovered(`No relevant results matching tokens on 4KHDHub for "${trimmed}"`);
+      return { success: true, query: trimmed, results: [], bestMatch: null };
+    }
+
+    // Rank results by relevance to the query
+    relevantResults.sort((a, b) => {
       const aLower = a.title.toLowerCase();
       const bLower = b.title.toLowerCase();
 
@@ -116,13 +128,13 @@ export async function search4KHDHub(query, options = {}) {
       return a.title.length - b.title.length;
     });
 
-    const bestMatch = results[0] || null;
+    const bestMatch = relevantResults[0] || null;
     logger.discovered(`Search for "${trimmed}" resolved best match: "${bestMatch?.title}" -> ${bestMatch?.url}`);
 
     return {
       success: true,
       query: trimmed,
-      results,
+      results: relevantResults,
       bestMatch,
     };
   } catch (err) {

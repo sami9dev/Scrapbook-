@@ -84,12 +84,13 @@ export async function searchXDMovies(query, options = {}) {
       }
     });
 
-    // Find best match matching the query words
+    // Find matches matching the query tokens
     const queryLower = trimmed.toLowerCase();
     const queryTokens = queryLower.split(/\s+/).filter(Boolean);
 
     let bestMatch = null;
     let highestScore = -1;
+    const scoredResults = [];
 
     for (const item of results) {
       const itemTitleLower = item.title.toLowerCase();
@@ -100,25 +101,29 @@ export async function searchXDMovies(query, options = {}) {
         score = 80;
       } else {
         const matches = queryTokens.filter((t) => itemTitleLower.includes(t)).length;
-        score = (matches / queryTokens.length) * 60;
+        if (matches > 0 && queryTokens.length > 0) {
+          score = (matches / queryTokens.length) * 60;
+        }
       }
 
-      if (score > highestScore && score >= 30) {
-        highestScore = score;
-        bestMatch = item;
+      if (score >= 30) {
+        scoredResults.push({ ...item, score });
+        if (score > highestScore) {
+          highestScore = score;
+          bestMatch = item;
+        }
       }
     }
 
-    if (!bestMatch && results.length > 0) {
-      bestMatch = results[0];
-    }
+    scoredResults.sort((a, b) => b.score - a.score);
+    const finalResults = scoredResults.map(({ score, ...rest }) => rest);
 
-    logger.discovered(`XDMovies search "${trimmed}" found ${results.length} result(s), best: "${bestMatch?.title || 'none'}"`);
+    logger.discovered(`XDMovies search "${trimmed}" found ${finalResults.length} relevant result(s), best: "${bestMatch?.title || 'none'}"`);
 
     return {
-      success: results.length > 0,
+      success: finalResults.length > 0,
       query: trimmed,
-      results,
+      results: finalResults,
       bestMatch,
     };
   } catch (err) {

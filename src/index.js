@@ -163,18 +163,27 @@ export async function startServer() {
             WORKER_CONCURRENCY: process.env.WORKER_CONCURRENCY || '2',
             PORT: String(config.port),
           };
-          logger.database(`Spawning Go Telegram Bot from: ${botBin}`);
-          goBotProcess = spawn(botBin, [], {
-            cwd: botDir,
-            env,
-            stdio: 'inherit',
-          });
-          goBotProcess.on('error', (err) => {
-            logger.error(`Go Telegram Bot process error: ${err.message}`);
-          });
-          goBotProcess.on('exit', (code, signal) => {
-            logger.warning(`Go Telegram Bot exited with code ${code} signal ${signal}`);
-          });
+          let isShuttingDown = false;
+          const spawnBot = () => {
+            if (isShuttingDown) return;
+            logger.database(`Spawning Go Telegram Bot from: ${botBin}`);
+            goBotProcess = spawn(botBin, [], {
+              cwd: botDir,
+              env,
+              stdio: 'inherit',
+            });
+            goBotProcess.on('error', (err) => {
+              logger.error(`Go Telegram Bot process error: ${err.message}`);
+            });
+            goBotProcess.on('exit', (code, signal) => {
+              logger.warning(`Go Telegram Bot exited with code ${code} signal ${signal}`);
+              if (!isShuttingDown) {
+                logger.database('Auto-restarting Go Telegram Bot in 2s...');
+                setTimeout(spawnBot, 2000);
+              }
+            });
+          };
+          spawnBot();
         } else {
           logger.warning('No Go bot binary found (bot-linux/bot.exe).');
         }
@@ -186,6 +195,7 @@ export async function startServer() {
     // Handle graceful shutdown
     const shutdown = async () => {
       logger.warning('Shutting down scraper server...');
+      isShuttingDown = true;
       if (telegramBot) telegramBot.stopPolling();
       if (goBotProcess) {
         try { goBotProcess.kill('SIGTERM'); } catch (_) {}
