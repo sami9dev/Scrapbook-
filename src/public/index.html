@@ -995,7 +995,8 @@
         // Fetch up to 1000 records so entire TV seasons and episodes are available client-side
         const res = await fetch('/api/links?limit=1000');
         if (res.ok) {
-          allLinks = await res.json();
+          const raw = await res.json();
+          allLinks = (raw || []).filter((l) => !/hubdrive/i.test(l.provider || '') && !/hubdrive/i.test(l.providerUrl || '') && !/hubdrive/i.test(l.mediatorUrl || ''));
           updateTabCounts();
           updateSeasonPills();
           renderTable();
@@ -1092,8 +1093,9 @@
 
       (allLinks || []).forEach((link) => {
         const url = link.providerUrl || '';
-        // Never count greenmotors mediator links
+        // Never count greenmotors mediator links or HubDrive
         if (url.includes('greenmotors') || url.includes('?id=')) return;
+        if (/hubdrive/i.test(link.provider || '') || /hubdrive/i.test(url) || /hubdrive/i.test(link.mediatorUrl || '')) return;
         const scope = link.scope || (link.episode !== null && link.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
         if (scope === 'episode') epCount++;
         else if (scope === 'pack') packCount++;
