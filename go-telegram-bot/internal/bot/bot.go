@@ -271,7 +271,7 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 				}
 				dest := m.ProviderURL
 				if dest == "" && m.MediatorURL != "" {
-					if cached, hit, err := b.cache.Get(context.Background(), m.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
+					if cached, hit, err := b.cache.GetL1(m.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
 						dest = cached
 					} else {
 						dest = m.MediatorURL
@@ -293,11 +293,14 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 		}
 
 		if statusMsg != nil {
-			if _, err := b.teleBot.Edit(statusMsg, sb.String(), tele.ModeHTML); err == nil {
+			if _, editErr := b.teleBot.Edit(statusMsg, sb.String(), tele.ModeHTML); editErr == nil {
 				return nil
+			} else {
+				log.Printf("[Bot] Edit statusMsg movie error: %v, sending via safe chunker", editErr)
 			}
 		}
-		return c.Send(sb.String(), tele.ModeHTML)
+		b.sendTelegramMessage(c.Recipient(), sb.String())
+		return nil
 	}
 
 	// Case B: TV Series
@@ -404,7 +407,7 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 					}
 					dest := p.ProviderURL
 					if dest == "" && p.MediatorURL != "" {
-						if cached, hit, err := b.cache.Get(context.Background(), p.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
+						if cached, hit, err := b.cache.GetL1(p.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
 							dest = cached
 						} else {
 							dest = p.MediatorURL
@@ -438,7 +441,7 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 					}
 					dest := ep.ProviderURL
 					if dest == "" && ep.MediatorURL != "" {
-						if cached, hit, err := b.cache.Get(context.Background(), ep.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
+						if cached, hit, err := b.cache.GetL1(ep.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
 							dest = cached
 						} else {
 							dest = ep.MediatorURL
@@ -466,25 +469,16 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 	// Send / Edit Overview
 	if statusMsg != nil {
 		if _, err := b.teleBot.Edit(statusMsg, sbOverview.String(), tele.ModeHTML); err != nil {
-			_, _ = b.teleBot.Send(c.Recipient(), sbOverview.String(), tele.ModeHTML)
+			log.Printf("[Bot] Failed to edit statusMsg overview: %v, sending via chunker", err)
+			b.sendTelegramMessage(c.Recipient(), sbOverview.String())
 		}
 	} else {
-		_, _ = b.teleBot.Send(c.Recipient(), sbOverview.String(), tele.ModeHTML)
+		b.sendTelegramMessage(c.Recipient(), sbOverview.String())
 	}
 
-	// Dispatch chunked messages (< 3200 chars per message)
-	if len(msgBlocks) > 0 {
-		var currentMsg strings.Builder
-		for _, block := range msgBlocks {
-			if currentMsg.Len()+len(block) > 3200 && currentMsg.Len() > 0 {
-				_, _ = b.teleBot.Send(c.Recipient(), currentMsg.String(), tele.ModeHTML)
-				currentMsg.Reset()
-			}
-			currentMsg.WriteString(block)
-		}
-		if currentMsg.Len() > 0 {
-			_, _ = b.teleBot.Send(c.Recipient(), currentMsg.String(), tele.ModeHTML)
-		}
+	// Dispatch chunked messages safely using sendTelegramMessage
+	for _, block := range msgBlocks {
+		b.sendTelegramMessage(c.Recipient(), block)
 	}
 
 	return nil
@@ -589,6 +583,39 @@ func (b *Bot) sendChunkedMessages(recipient tele.Recipient, header string, lines
 		}
 	}
 	return nil
+}
+
+func (b *Bot) sendTelegramMessage(recipient tele.Recipient, text string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	for len(text) > 0 {
+		chunk := text
+		if len(chunk) > 3500 {
+			idx := strings.LastIndex(chunk[:3500], "\n\n")
+			if idx == -1 {
+				idx = strings.LastIndex(chunk[:3500], "\n")
+			}
+			if idx == -1 {
+				idx = 3500
+			}
+			chunk = strings.TrimSpace(text[:idx])
+			text = strings.TrimSpace(text[idx:])
+		} else {
+			text = ""
+		}
+		if chunk == "" {
+			continue
+		}
+		if _, err := b.teleBot.Send(recipient, chunk, tele.ModeHTML); err != nil {
+			log.Printf("[Bot] HTML send failed: %v, retrying plain text", err)
+			if _, plainErr := b.teleBot.Send(recipient, chunk); plainErr != nil {
+				log.Printf("[Bot] Plain text send failed: %v", plainErr)
+			}
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
 }
 
 func (b *Bot) handleDownloadLinks(c tele.Context, matches []string) error {

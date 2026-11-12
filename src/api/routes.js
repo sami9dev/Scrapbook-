@@ -86,9 +86,9 @@ router.post('/scrape', async (req, res) => {
   try {
     if (reset || autoReset) {
       jobQueue.cancelAll();
-      await scrapedLinksRepo.clear();
-      await jobsRepo.clear();
-      logger.database('Auto-reset completed before enqueuing new scrape job.');
+      await scrapedLinksRepo.clear({ sourceUrl: validation.normalizedUrl });
+      await jobsRepo.clear({ url: validation.normalizedUrl });
+      logger.database(`Reset completed for sourceUrl: ${validation.normalizedUrl}`);
     }
 
     const job = await jobQueue.addJob(validation.normalizedUrl, { quality: selectedQuality, scope: selectedScope });
@@ -748,9 +748,11 @@ router.post('/parse-html', async (req, res) => {
       html.includes('continue-btn');
 
     if ((reset || autoReset) && !isDestinationResolution) {
-      await scrapedLinksRepo.clear();
-      await jobsRepo.clear();
-      logger.database('Auto-reset completed before parsing direct HTML.');
+      if (sourceUrl) {
+        await scrapedLinksRepo.clear({ sourceUrl: sourceUrl.trim() });
+        await jobsRepo.clear({ url: sourceUrl.trim() });
+      }
+      logger.database('Reset completed for direct HTML input session.');
     }
 
     // Check if pasted HTML or text contains direct HubCloud destination links
