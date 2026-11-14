@@ -166,25 +166,23 @@ func (c *MultiTierCache) getL2(ctx context.Context, rawURL string) (string, erro
 	if payload.Result == nil {
 		return "", redis.Nil
 	}
-	return *payload.Result, nil
+	cleanVal := strings.Trim(strings.TrimSpace(*payload.Result), "\"' \t\r\n")
+	return cleanVal, nil
 }
 
 func (c *MultiTierCache) setL2(ctx context.Context, rawURL, value string, ttl time.Duration) error {
 	key := c.l2Key(rawURL)
+	cleanVal := strings.Trim(strings.TrimSpace(value), "\"' \t\r\n")
 	if c.l2Redis != nil {
-		return c.l2Redis.Set(ctx, key, value, ttl).Err()
+		return c.l2Redis.Set(ctx, key, cleanVal, ttl).Err()
 	}
 
 	ttlSeconds := int64(ttl / time.Second)
 	if ttlSeconds < 1 {
 		ttlSeconds = 1
 	}
-	body, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("%s/set/%s?ex=%d", c.l2RESTURL, key, ttlSeconds), strings.NewReader(string(body)))
+		fmt.Sprintf("%s/set/%s?ex=%d", c.l2RESTURL, key, ttlSeconds), strings.NewReader(cleanVal))
 	if err != nil {
 		return err
 	}

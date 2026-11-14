@@ -283,12 +283,12 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 				if name == "" {
 					name = m.Title
 				}
-				dest := m.ProviderURL
+				dest := cleanURL(m.ProviderURL)
 				if dest == "" && m.MediatorURL != "" {
 					if cached, hit, err := b.cache.GetL1(m.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
-						dest = cached
+						dest = cleanURL(cached)
 					} else {
-						dest = m.MediatorURL
+						dest = cleanURL(m.MediatorURL)
 					}
 				}
 				sizeStr := m.SizeDisplay
@@ -419,12 +419,12 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 					if name == "" {
 						name = p.Title
 					}
-					dest := p.ProviderURL
+					dest := cleanURL(p.ProviderURL)
 					if dest == "" && p.MediatorURL != "" {
 						if cached, hit, err := b.cache.GetL1(p.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
-							dest = cached
+							dest = cleanURL(cached)
 						} else {
-							dest = p.MediatorURL
+							dest = cleanURL(p.MediatorURL)
 						}
 					}
 					sizeStr := p.SizeDisplay
@@ -453,12 +453,12 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 					if name == "" {
 						name = ep.Title
 					}
-					dest := ep.ProviderURL
+					dest := cleanURL(ep.ProviderURL)
 					if dest == "" && ep.MediatorURL != "" {
 						if cached, hit, err := b.cache.GetL1(ep.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
-							dest = cached
+							dest = cleanURL(cached)
 						} else {
-							dest = ep.MediatorURL
+							dest = cleanURL(ep.MediatorURL)
 						}
 					}
 					sizeStr := ep.SizeDisplay
@@ -498,8 +498,13 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 	return nil
 }
 
+func cleanURL(u string) string {
+	return strings.Trim(strings.TrimSpace(u), "\"' \t\r\n")
+}
+
 func isDirectHubCloud(urlStr string) bool {
-	lower := strings.ToLower(urlStr)
+	clean := cleanURL(urlStr)
+	lower := strings.ToLower(clean)
 	return strings.Contains(lower, "hubcloud") && (strings.Contains(lower, "/drive/") || strings.Contains(lower, "/file/"))
 }
 
@@ -653,7 +658,7 @@ func (b *Bot) handleDownloadLinks(c tele.Context, matches []string) error {
 				var sb strings.Builder
 				sb.WriteString(fmt.Sprintf("🎯 <b>Instant Cache Hit: %d Link(s)</b>\n\n", len(enqueueResp.Results)))
 				for i, res := range enqueueResp.Results {
-					dest := res.Destination
+					dest := cleanURL(res.Destination)
 					if strings.Contains(dest, "hubcloud") {
 						sb.WriteString(fmt.Sprintf("<b>#%d:</b> ⚡ <a href=\"%s\"><b>Direct HubCloud Link</b></a>\n<code>%s</code>\n\n", i+1, dest, dest))
 					}
@@ -922,7 +927,7 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 				if name == "" {
 					name = m.Item.Title
 				}
-				dest := m.Result.Destination
+				dest := cleanURL(m.Result.Destination)
 				sizeStr := m.Item.SizeDisplay
 				sizeLine := ""
 				if sizeStr != "" {
@@ -956,7 +961,7 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 					if name == "" {
 						name = p.Item.Title
 					}
-					dest := p.Result.Destination
+					dest := cleanURL(p.Result.Destination)
 					sizeStr := p.Item.SizeDisplay
 					sizeLine := ""
 					if sizeStr != "" {
@@ -978,7 +983,7 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 					if name == "" {
 						name = ep.Item.Title
 					}
-					dest := ep.Result.Destination
+					dest := cleanURL(ep.Result.Destination)
 					sizeStr := ep.Item.SizeDisplay
 					sizeLine := ""
 					if sizeStr != "" {
@@ -1006,7 +1011,7 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 			} else if res.Err != nil {
 				oSB.WriteString(fmt.Sprintf("<b>#%d:</b> ⚠️ <b>Resolution Failed</b>: %s\n\n", i+1, html.EscapeString(res.Err.Error())))
 			} else {
-				dest := res.Destination
+				dest := cleanURL(res.Destination)
 				tag := "⚡"
 				if !res.FromCache {
 					tag = "🔄"
