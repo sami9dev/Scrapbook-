@@ -260,6 +260,7 @@ router.post('/scrape-page', async (req, res) => {
           sourceDomain: new URL(targetUrl).hostname,
           title: rel.label || catalogue.title,
           filename: rel.filename || rel.label || catalogue.title,
+          type: isMoviePage ? 'movie' : 'tv',
           scope: rel.scope || (isMoviePage ? 'movie' : (rel.episode !== null && rel.episode !== undefined ? 'episode' : 'pack')),
           season: isMoviePage ? null : (rel.season ?? 1),
           episode: isMoviePage ? null : (rel.episode ?? null),

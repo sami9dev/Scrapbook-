@@ -22,6 +22,20 @@ import (
 )
 
 var urlRegex = regexp.MustCompile(`https?://[^\s/$.?#].[^\s]*`)
+var seriesPattern = regexp.MustCompile(`(?i)\b(s\d{1,2}|season\s*\d{1,2}|ep\d{1,3}|episode\s*\d{1,3})\b`)
+
+func isSeriesRelease(scope, filename string, season, episode int) bool {
+	if strings.EqualFold(scope, "movie") {
+		return false
+	}
+	if strings.EqualFold(scope, "episode") || strings.EqualFold(scope, "pack") {
+		return true
+	}
+	if season > 0 || episode > 0 {
+		return true
+	}
+	return seriesPattern.MatchString(filename)
+}
 
 type Bot struct {
 	teleBot     *tele.Bot
@@ -816,6 +830,27 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 	}
 	bSeasonsMap := make(map[int]*batchSeasonGroup)
 	var bSeasonsList []int
+
+	type batchMovieQualitySection struct {
+		Category string
+		Rank     int
+		Links    []resolvedMetaItem
+	}
+	bMovieQualities := make(map[string]*batchMovieQualitySection)
+	var bMovieQualityKeys []string
+
+	getOrCreateBatchMovieQuality := func(filename, quality string) *batchMovieQualitySection {
+		cat, rank := getReleaseCategory(filename, quality)
+		if bMovieQualities[cat] == nil {
+			bMovieQualities[cat] = &batchMovieQualitySection{
+				Category: cat,
+				Rank:     rank,
+			}
+			bMovieQualityKeys = append(bMovieQualityKeys, cat)
+		}
+		return bMovieQualities[cat]
+	}
+
 	var others []resolvedMetaItem
 
 	getOrCreateBatchSeason := func(s int) *batchSeasonGroup {
@@ -855,6 +890,9 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 
 		if !it.HasMeta || it.Result.Err != nil || !strings.Contains(it.Result.Destination, "hubcloud") {
 			others = append(others, it)
+		} else if !isSeriesRelease(it.Item.Scope, it.Item.Filename, it.Item.Season, it.Item.Episode) {
+			bmq := getOrCreateBatchMovieQuality(it.Item.Filename, it.Item.Quality)
+			bmq.Links = append(bmq.Links, it)
 		} else {
 			isPack := it.Item.Scope == "pack" || it.Item.Type == "pack" || strings.HasSuffix(strings.ToLower(it.Item.Filename), ".zip")
 			bsg := getOrCreateBatchSeason(it.Item.Season)
@@ -868,6 +906,35 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 	}
 
 	var msgBlocks []string
+
+	// Format Movie releases first (clean movie cards without Season/Episode labels)
+	if len(bMovieQualityKeys) > 0 {
+		sort.Slice(bMovieQualityKeys, func(i, j int) bool {
+			return bMovieQualities[bMovieQualityKeys[i]].Rank > bMovieQualities[bMovieQualityKeys[j]].Rank
+		})
+
+		for _, catKey := range bMovieQualityKeys {
+			bmq := bMovieQualities[catKey]
+			var mSB strings.Builder
+			mSB.WriteString(fmt.Sprintf("🎬 <b>════ %s ════</b>\n\n", bmq.Category))
+			for _, m := range bmq.Links {
+				name := m.Item.Filename
+				if name == "" {
+					name = m.Item.Title
+				}
+				dest := m.Result.Destination
+				sizeStr := m.Item.SizeDisplay
+				sizeLine := ""
+				if sizeStr != "" {
+					sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
+				}
+				mSB.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>Direct HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
+					html.EscapeString(name), sizeLine, dest, dest))
+			}
+			msgBlocks = append(msgBlocks, mSB.String())
+		}
+	}
+
 	sort.Ints(bSeasonsList)
 
 	for _, s := range bSeasonsList {
@@ -977,16 +1044,8 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 		_, _ = b.teleBot.Edit(statusMsg, statusDone, tele.ModeHTML)
 	}
 
-	var currentMsg strings.Builder
 	for _, block := range msgBlocks {
-		if currentMsg.Len()+len(block) > 3200 && currentMsg.Len() > 0 {
-			_, _ = b.teleBot.Send(c.Recipient(), currentMsg.String(), tele.ModeHTML)
-			currentMsg.Reset()
-		}
-		currentMsg.WriteString(block)
-	}
-	if currentMsg.Len() > 0 {
-		_, _ = b.teleBot.Send(c.Recipient(), currentMsg.String(), tele.ModeHTML)
+		b.sendTelegramMessage(c.Recipient(), block)
 	}
 }
 
