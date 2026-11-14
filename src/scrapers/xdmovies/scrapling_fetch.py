@@ -9,10 +9,34 @@ if sys.platform == 'win32' and os.environ.get('PLAYWRIGHT_BROWSERS_PATH') == '0'
 
 from scrapling.engines._browsers._stealth import StealthySession
 
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+os.makedirs(DATA_DIR, exist_ok=True)
+STATE_FILE = os.path.join(DATA_DIR, 'cf_session.json')
+
 def fetch_page(url):
     try:
         with StealthySession(headless=True, solve_cloudflare=True) as session:
-            page = session.fetch(url, timeout=65000)
+            if os.path.exists(STATE_FILE):
+                try:
+                    session.load_state(STATE_FILE)
+                except Exception:
+                    pass
+
+            page = session.fetch(
+                url,
+                timeout=45000,
+                wait_selector=".download-box",
+                network_idle=False,
+                disable_resources=True,
+                blocked_domains={"werefilledwit.org", "deofleadyetca.org", "ghabovethec.info", "doubleclick.net"}
+            )
+
+            try:
+                session.save_state(STATE_FILE)
+            except Exception:
+                pass
+
             raw = page.body if hasattr(page, 'body') and isinstance(page.body, (bytes, bytearray)) else (page.html_content if hasattr(page, 'html_content') else '')
             if isinstance(raw, (bytes, bytearray)):
                 html = raw.decode('utf-8', errors='ignore')
