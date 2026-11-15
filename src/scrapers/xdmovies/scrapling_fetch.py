@@ -26,7 +26,7 @@ def fetch_page(url):
             page = session.fetch(
                 url,
                 timeout=45000,
-                wait_selector=".download-box",
+                wait_selector=".download-box, .episode-card, .pack-card, .download-item, a[href*='link.xdmovies']",
                 network_idle=False,
                 disable_resources=True,
                 blocked_domains={"werefilledwit.org", "deofleadyetca.org", "ghabovethec.info", "doubleclick.net"}
