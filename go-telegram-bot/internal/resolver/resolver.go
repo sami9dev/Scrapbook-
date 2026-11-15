@@ -429,7 +429,14 @@ func (r *Resolver) resolveAfterCacheMiss(ctx context.Context, rawURL string, sta
 		}
 	}
 	if err != nil {
-		dest, err = r.resolveDirectRedirects(ctx, rawURL)
+		backendErr := err
+		directDest, directErr := r.resolveDirectRedirects(ctx, rawURL)
+		if directErr == nil && directDest != "" {
+			dest = directDest
+			err = nil
+		} else {
+			err = backendErr
+		}
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return Result{
