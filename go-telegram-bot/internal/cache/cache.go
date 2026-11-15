@@ -308,6 +308,7 @@ func (c *MultiTierCache) Get(ctx context.Context, rawURL string) (string, bool, 
 			"$or": []bson.M{
 				{"mediatorUrl": rawURL},
 				{"original_url": rawURL},
+				{"sourceUrl": rawURL},
 			},
 		}
 		err := c.l3Mongo.FindOne(mCtx, filter).Decode(&doc)

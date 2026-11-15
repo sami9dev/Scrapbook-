@@ -46,7 +46,7 @@ func main() {
 		mCtx, mCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer mCancel()
 		if client, err := mongo.Connect(mCtx, options.Client().ApplyURI(cfg.MongoURI)); err == nil {
-			mongoCol = client.Database("scraper_db").Collection("scrapedlinks")
+			mongoCol = client.Database("scraper_db").Collection("scraped_links")
 			log.Println("[Init] L3 MongoDB Atlas client initialized")
 		} else {
 			log.Printf("[Init] MongoDB connection note: %v\n", err)

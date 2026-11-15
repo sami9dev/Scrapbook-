@@ -10,6 +10,7 @@
     "postinstall": "PLAYWRIGHT_BROWSERS_PATH=0 npx patchright install chromium chromium-headless-shell || true",
     "format": "node src/cli.js",
     "collect-links": "node src/tools/link-collector/cli.js",
+    "db:index": "node scripts/setup-mongodb-indexes.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "deploy": "wrangler deploy",

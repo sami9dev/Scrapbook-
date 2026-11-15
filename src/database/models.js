@@ -37,10 +37,19 @@ export class ScrapedLinksRepository {
     const col = this.collection;
     await col.createIndex({ sourceUrl: 1 });
     await col.createIndex({ mediatorUrl: 1 });
+    await col.createIndex({ original_url: 1 });
     await col.createIndex({ normalizedTitle: 1 });
     await col.createIndex({ providerUrl: 1 });
     await col.createIndex({ fileId: 1 });
     await col.createIndex({ title: 1 });
+    await col.createIndex({ status: 1 });
+    await col.createIndex({ updatedAt: -1 });
+    try {
+      await col.createIndex({ mediatorUrl: 1, providerUrl: 1, status: 1, title: 1 });
+      await col.createIndex({ sourceUrl: 1, status: 1 });
+      await col.createIndex({ normalizedTitle: 1, quality: 1, season: 1, episode: 1 });
+      await col.createIndex({ title: 'text', filename: 'text' });
+    } catch (e) {}
     // Unique compound key to prevent duplicates
     await col.createIndex({ dedupeKey: 1 }, { unique: true });
   }
