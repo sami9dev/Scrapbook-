@@ -162,6 +162,107 @@ export class JobQueue {
       return;
     }
 
+    // Case C: User submitted an XDMovies URL (Route to stealth scraper & parser)
+    const isXDMovies = /xdmovies\.[a-z0-9.]+|huh\.xdmovies|link\.xdmovies|top\.xdmovies/i.test(job.url);
+    if (isXDMovies) {
+      logger.discovered(`Routing job ${jobId} to dedicated XDMovies stealth pipeline: ${job.url}`);
+      const { fetchXDMoviesPage } = await import('../scrapers/xdmovies/browser-fetch.js');
+      const { parseXDMoviesCatalogue } = await import('../scrapers/xdmovies/catalogue.js');
+      const { recordInCatalog } = await import('../utils/catalog-store.js');
+
+      let html = '';
+      try {
+        const pageRes = await fetch(job.url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Referer': 'https://huh.xdmovies.wtf/',
+          },
+          signal: AbortSignal.timeout(4000),
+        });
+        if (pageRes.ok) {
+          const body = await pageRes.text();
+          if (!body.includes('Just a moment...') && !body.includes('cf-turnstile') && !body.includes('security verification')) {
+            html = body;
+          }
+        }
+      } catch {}
+
+      if (!html || html.length < 500) {
+        logger.log('XDMovies', `Job ${jobId}: Fetching XDMovies page via stealth resolver...`);
+        const bfRes = await fetchXDMoviesPage(job.url, { timeoutMs: 65000 });
+        if (bfRes.success && bfRes.html && bfRes.html.length > 500) {
+          html = bfRes.html;
+        } else {
+          await jobsRepo.updateJob(jobId, {
+            status: SCRAPED_STATUS.HUMAN_VERIFICATION_REQUIRED,
+            error: bfRes.error || 'Failed to bypass XDMovies security verification',
+          });
+          return;
+        }
+      }
+
+      const catalogue = parseXDMoviesCatalogue(html, job.url);
+      const isMoviePage = catalogue.type === 'movie';
+
+      recordInCatalog({
+        title: catalogue.title || 'XDMovies Content',
+        url: job.url,
+        format: isMoviePage ? 'Movie' : 'Series',
+        platform: 'XDMovies',
+      });
+
+      const allReleases =
+        catalogue.type === 'series' && Array.isArray(catalogue.seasons)
+          ? catalogue.seasons.flatMap((s) => s.releases || [])
+          : Array.isArray(catalogue.qualities)
+          ? catalogue.qualities.flatMap((q) => q.releases || [])
+          : [];
+
+      let totalSaved = 0;
+      for (const rel of allReleases) {
+        for (const dl of (rel.downloadLinks || [])) {
+          const rawLink = dl.url;
+          if (!rawLink || /hubdrive/i.test(dl.provider || '') || /hubdrive/i.test(rawLink)) {
+            continue;
+          }
+          const isDirectHubCloud = dl.isDirectDestination || isHubCloudDriveUrl(rawLink) || /hubcloud\.[a-z0-9.]+/i.test(rawLink);
+          const providerUrl = isDirectHubCloud ? rawLink : null;
+          const mediatorUrl = isDirectHubCloud ? null : rawLink;
+          const fileId = isDirectHubCloud ? extractHubCloudDriveId(rawLink) : null;
+          const status = isDirectHubCloud ? SCRAPED_STATUS.RESOLVED : SCRAPED_STATUS.DISCOVERED;
+
+          const savedDoc = {
+            sourceUrl: job.url,
+            sourceDomain: new URL(job.url).hostname,
+            title: rel.label || catalogue.title,
+            filename: rel.filename || rel.label || catalogue.title,
+            scope: rel.scope || (isMoviePage ? 'movie' : (rel.episode !== null && rel.episode !== undefined ? 'episode' : 'pack')),
+            season: isMoviePage ? null : (rel.season ?? 1),
+            episode: isMoviePage ? null : (rel.episode ?? null),
+            quality: rel.quality?.normalized || rel.resolution || 'unknown',
+            codec: rel.codec || null,
+            sizeDisplay: rel.fileSize || null,
+            provider: 'HubCloud',
+            providerUrl,
+            mediatorUrl,
+            fileId,
+            status,
+          };
+
+          await scrapedLinksRepo.saveLink(savedDoc);
+          totalSaved++;
+        }
+      }
+
+      logger.log('XDMovies', `Job ${jobId} finished: ${allReleases.length} release(s), ${totalSaved} download link(s) indexed`);
+      await jobsRepo.updateJob(jobId, {
+        status: SCRAPED_STATUS.RESOLVED,
+        extractedCount: totalSaved,
+      });
+      return;
+    }
+
     // Step 1: Fetch Source Page for 4KHub4U
     const sourceFetch = await fetchWithControls(job.url);
 
