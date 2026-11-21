@@ -986,6 +986,33 @@ router.post('/parse-html', async (req, res) => {
         }
       }
 
+      if (savedRecords.length === 0) {
+        const cheerio = await import('cheerio');
+        const $ = cheerio.load(html);
+        const searchCards = [];
+        $('.movie-card, article, .card-grid a').each((_, el) => {
+          let href = $(el).attr('href') || $(el).find('a').attr('href') || '';
+          if (href && !/\/category\/|\/tag\/|\/page\//i.test(href)) {
+            const title = $(el).find('.movie-card-title, h3, h2').text().trim() || $(el).text().trim();
+            const year = $(el).find('.movie-card-meta').text().trim();
+            const fullUrl = href.startsWith('http') ? href : new URL(href, 'https://4khdhub.one').href;
+            if (title && !searchCards.some((c) => c.url === fullUrl)) {
+              searchCards.push({ title: year ? `${title} (${year})` : title, url: fullUrl });
+            }
+          }
+        });
+
+        if (searchCards.length > 0) {
+          return res.json({
+            success: false,
+            isSearchPage: true,
+            count: 0,
+            message: `You pasted a Search Results page containing ${searchCards.length} movie(s). To extract download links, open one of the specific movie pages below and paste its HTML:`,
+            results: searchCards,
+          });
+        }
+      }
+
       return res.json({
         success: true,
         count: savedRecords.length,

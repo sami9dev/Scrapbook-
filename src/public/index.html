@@ -1660,6 +1660,12 @@
 
           const data = await res.json();
           if (res.ok) {
+            if (data.isSearchPage && Array.isArray(data.results)) {
+              rawHtmlFeedback.innerHTML = `<div style="color: #fbbf24; margin-bottom: 8px; font-weight: 600;">⚠️ ${data.message}</div><ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px;">` +
+                data.results.map(r => `<li>🎬 <a href="${r.url}" target="_blank" style="color: #60a5fa; text-decoration: underline; font-weight: 500;">${r.title}</a> <span style="font-size: 0.8rem; color: #94a3b8;">(${r.url})</span></li>`).join('') +
+                `</ul>`;
+              return;
+            }
             rawHtmlFeedback.textContent = `✓ Successfully extracted and resolved ${data.count} items!`;
             rawHtmlFeedback.style.color = 'var(--status-resolved)';
             rawHtmlTextarea.value = '';
