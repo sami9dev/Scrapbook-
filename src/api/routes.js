@@ -927,69 +927,100 @@ router.post('/parse-html', async (req, res) => {
       });
     }
 
-    // Process pasted HTML as 4KHub4U / 4KHDHub
-    const { parse4KHubCatalogue, resolveCatalogueLinks } = await import('../scrapers/4khub4u/catalogue.js');
+    // Auto-detect platform: XDMovies vs 4KHub4U
+    const isXDMovies =
+      (sourceUrl && /xdmovies/i.test(sourceUrl)) ||
+      /xdmovies/i.test(html) ||
+      html.includes('link.xdmovies') ||
+      html.includes('packs-grid') ||
+      (html.includes('pack-card') && html.includes('episode-card'));
+
+    const platform = isXDMovies ? 'XDMovies' : '4KHub4U';
+    const defaultSourceUrl = isXDMovies ? 'https://huh.xdmovies.wtf/' : 'https://4khdhub.one/';
+
+    let catalogue;
     const { recordInCatalog } = await import('../utils/catalog-store.js');
 
-      const rawCatalogue = parse4KHubCatalogue(html, sourceUrl || 'https://4khdhub.one/');
-      const catalogue = await resolveCatalogueLinks(rawCatalogue, { concurrency: 20, timeout: 4500 }).catch(() => rawCatalogue);
-      const isMoviePage = catalogue.type === 'movie';
+    if (isXDMovies) {
+      const { parseXDMoviesCatalogue } = await import('../scrapers/xdmovies/catalogue.js');
+      catalogue = parseXDMoviesCatalogue(html, sourceUrl || defaultSourceUrl);
+    } else {
+      const { parse4KHubCatalogue, resolveCatalogueLinks } = await import('../scrapers/4khub4u/catalogue.js');
+      const rawCatalogue = parse4KHubCatalogue(html, sourceUrl || defaultSourceUrl);
+      catalogue = await resolveCatalogueLinks(rawCatalogue, { concurrency: 20, timeout: 4500 }).catch(() => rawCatalogue);
+    }
+    const isMoviePage = catalogue.type === 'movie';
 
-      recordInCatalog({
-        title: catalogue.title || '4KHub4U Content',
-        url: sourceUrl || 'https://4khdhub.one/',
-        format: isMoviePage ? 'Movie' : 'Series',
-        platform: '4KHub4U',
-      });
+    recordInCatalog({
+      title: catalogue.title || `${platform} Content`,
+      url: sourceUrl || defaultSourceUrl,
+      format: isMoviePage ? 'Movie' : 'Series',
+      platform,
+    });
 
-      const allReleases =
-        catalogue.type === 'series' && Array.isArray(catalogue.seasons)
-          ? catalogue.seasons.flatMap((s) => s.releases || [])
-          : Array.isArray(catalogue.qualities)
-          ? catalogue.qualities.flatMap((q) => q.releases || [])
-          : [];
+    const allReleases =
+      catalogue.type === 'series' && Array.isArray(catalogue.seasons)
+        ? catalogue.seasons.flatMap((s) => s.releases || [])
+        : Array.isArray(catalogue.qualities)
+        ? catalogue.qualities.flatMap((q) => q.releases || [])
+        : [];
 
-      const savedRecords = [];
-      for (const rel of allReleases) {
-        for (const dl of (rel.downloadLinks || [])) {
-          const rawLink = dl.url;
-          // STRICT FILTER: HubDrive links are prohibited; only HubCloud links are preserved
-          if (!rawLink || /hubdrive/i.test(dl.provider || '') || /hubdrive/i.test(rawLink)) {
-            continue;
-          }
-          const isDirect = dl.isDirectDestination || isHubCloudDriveUrl(rawLink) || /hubcloud\.[a-z0-9.]+/i.test(rawLink);
-          const providerUrl = isDirect ? rawLink : null;
-          const mediatorUrl = isDirect ? null : rawLink;
-          const fileId = isDirect ? (extractHubCloudDriveId(rawLink) || rawLink.split('/').pop()) : null;
-          const status = isDirect ? 'RESOLVED' : 'DISCOVERED';
-
-          const doc = {
-            sourceUrl: sourceUrl || 'https://4khdhub.one/',
-            sourceDomain: sourceUrl && sourceUrl.startsWith('http') ? new URL(sourceUrl).hostname : '4khdhub.one',
-            title: rel.label || catalogue.title,
-            filename: rel.filename || rel.label || catalogue.title,
-            scope: rel.scope || (isMoviePage ? 'movie' : (rel.episode !== null && rel.episode !== undefined ? 'episode' : 'pack')),
-            season: isMoviePage ? null : (rel.season ?? 1),
-            episode: isMoviePage ? null : (rel.episode ?? null),
-            quality: rel.quality?.normalized || rel.resolution || 'unknown',
-            codec: rel.codec || null,
-            sizeDisplay: rel.fileSize || null,
-            provider: 'HubCloud',
-            providerUrl,
-            mediatorUrl,
-            fileId,
-            status,
-          };
-
-          const saved = await scrapedLinksRepo.saveLink(doc);
-          savedRecords.push(saved);
+    const savedRecords = [];
+    for (const rel of allReleases) {
+      for (const dl of (rel.downloadLinks || [])) {
+        const rawLink = dl.url;
+        // STRICT FILTER: HubDrive links are prohibited; only HubCloud links are preserved
+        if (!rawLink || /hubdrive/i.test(dl.provider || '') || /hubdrive/i.test(rawLink)) {
+          continue;
         }
-      }
+        const isDirect = dl.isDirectDestination || isHubCloudDriveUrl(rawLink) || /hubcloud\.[a-z0-9.]+/i.test(rawLink);
+        const providerUrl = isDirect ? rawLink : null;
+        const mediatorUrl = isDirect ? null : rawLink;
+        const fileId = isDirect ? (extractHubCloudDriveId(rawLink) || rawLink.split('/').pop()) : null;
+        const status = isDirect ? 'RESOLVED' : 'DISCOVERED';
 
-      if (savedRecords.length === 0) {
-        const cheerio = await import('cheerio');
-        const $ = cheerio.load(html);
-        const searchCards = [];
+        const doc = {
+          sourceUrl: sourceUrl || defaultSourceUrl,
+          sourceDomain: sourceUrl && sourceUrl.startsWith('http') ? new URL(sourceUrl).hostname : (isXDMovies ? 'huh.xdmovies.wtf' : '4khdhub.one'),
+          title: rel.label || catalogue.title,
+          filename: rel.filename || rel.label || catalogue.title,
+          scope: rel.scope || (isMoviePage ? 'movie' : (rel.episode !== null && rel.episode !== undefined ? 'episode' : 'pack')),
+          season: isMoviePage ? null : (rel.season ?? 1),
+          episode: isMoviePage ? null : (rel.episode ?? null),
+          quality: rel.quality?.normalized || rel.resolution || 'unknown',
+          codec: rel.codec || null,
+          sizeDisplay: rel.fileSize || null,
+          provider: 'HubCloud',
+          providerUrl,
+          mediatorUrl,
+          fileId,
+          status,
+        };
+
+        const saved = await scrapedLinksRepo.saveLink(doc);
+        savedRecords.push(saved);
+      }
+    }
+
+    if (savedRecords.length === 0) {
+      const cheerio = await import('cheerio');
+      const $ = cheerio.load(html);
+      const searchCards = [];
+
+      if (isXDMovies) {
+        $('a[href*="/movies/"], a[href*="/series/"]').each((_, el) => {
+          let href = $(el).attr('href') || '';
+          if (!href || /\/category\/|\/tag\/|\/page\//i.test(href)) return;
+          const title =
+            $(el).find('.title, h2, h3, .movie-title, .name').text().trim() ||
+            $(el).text().trim().split('\n').filter(Boolean)[0] || '';
+          const cleanTitle = title.replace(/\s+/g, ' ').trim();
+          const fullUrl = href.startsWith('http') ? href : new URL(href, 'https://huh.xdmovies.wtf').href;
+          if (cleanTitle && !searchCards.some((c) => c.url === fullUrl)) {
+            searchCards.push({ title: cleanTitle, url: fullUrl });
+          }
+        });
+      } else {
         $('.movie-card, article, .card-grid a').each((_, el) => {
           let href = $(el).attr('href') || $(el).find('a').attr('href') || '';
           if (href && !/\/category\/|\/tag\/|\/page\//i.test(href)) {
@@ -1001,17 +1032,33 @@ router.post('/parse-html', async (req, res) => {
             }
           }
         });
-
-        if (searchCards.length > 0) {
-          return res.json({
-            success: false,
-            isSearchPage: true,
-            count: 0,
-            message: `You pasted a Search Results page containing ${searchCards.length} movie(s). To extract download links, open one of the specific movie pages below and paste its HTML:`,
-            results: searchCards,
-          });
-        }
       }
+
+      if (searchCards.length === 0) {
+        $('a[href*="/movies/"], a[href*="/series/"]').each((_, el) => {
+          let href = $(el).attr('href') || '';
+          if (!href || /\/category\/|\/tag\/|\/page\//i.test(href)) return;
+          const title =
+            $(el).find('.title, h2, h3, .movie-title, .name').text().trim() ||
+            $(el).text().trim().split('\n').filter(Boolean)[0] || '';
+          const cleanTitle = title.replace(/\s+/g, ' ').trim();
+          const fullUrl = href.startsWith('http') ? href : new URL(href, 'https://huh.xdmovies.wtf').href;
+          if (cleanTitle && !searchCards.some((c) => c.url === fullUrl)) {
+            searchCards.push({ title: cleanTitle, url: fullUrl });
+          }
+        });
+      }
+
+      if (searchCards.length > 0) {
+        return res.json({
+          success: false,
+          isSearchPage: true,
+          count: 0,
+          message: `You pasted an ${platform} Search Results page containing ${searchCards.length} title(s). Open one of the specific pages below and paste its HTML:`,
+          results: searchCards,
+        });
+      }
+    }
 
       return res.json({
         success: true,
