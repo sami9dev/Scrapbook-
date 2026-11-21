@@ -843,7 +843,7 @@ func (r *Resolver) fetchLinksBySourceURL(ctx context.Context, sourceURL string) 
 	if r.baseAPI == "" || sourceURL == "" {
 		return nil
 	}
-	reqURL := fmt.Sprintf("%s/api/links?sourceUrl=%s&limit=100", r.baseAPI, url.QueryEscape(sourceURL))
+	reqURL := fmt.Sprintf("%s/api/links?sourceUrl=%s&limit=1000", r.baseAPI, url.QueryEscape(sourceURL))
 	reqCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, "GET", reqURL, nil)
@@ -870,7 +870,7 @@ func (r *Resolver) fetchLinksByTitleSearch(ctx context.Context, titleQuery strin
 	if r.baseAPI == "" || titleQuery == "" {
 		return nil
 	}
-	reqURL := fmt.Sprintf("%s/api/links?titleSearch=%s&limit=50", r.baseAPI, url.QueryEscape(titleQuery))
+	reqURL := fmt.Sprintf("%s/api/links?titleSearch=%s&limit=500", r.baseAPI, url.QueryEscape(titleQuery))
 	reqCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, "GET", reqURL, nil)

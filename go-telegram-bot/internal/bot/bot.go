@@ -298,10 +298,10 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 				}
 				if isDirectHubCloud(dest) {
 					sb.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>Direct HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
-						html.EscapeString(name), sizeLine, dest, dest))
+						html.EscapeString(name), sizeLine, html.EscapeString(dest), html.EscapeString(dest)))
 				} else {
 					sb.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ 🔗 <b>Mediator Link:</b> <a href=\"%s\">%s</a>\n\n",
-						html.EscapeString(name), sizeLine, dest, dest))
+						html.EscapeString(name), sizeLine, html.EscapeString(dest), html.EscapeString(dest)))
 				}
 			}
 		}
@@ -394,6 +394,15 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 	var sbOverview strings.Builder
 	sbOverview.WriteString(fmt.Sprintf("🔥 <b>%s</b>\n", html.EscapeString(series.Title)))
 	sbOverview.WriteString(fmt.Sprintf("⚡ <i>Retrieved in %s</i>\n", formatDuration(duration)))
+	if len(seasonsList) > 1 {
+		var sNames []string
+		for _, s := range seasonsList {
+			sNames = append(sNames, fmt.Sprintf("Season %d", s))
+		}
+		sbOverview.WriteString(fmt.Sprintf("🗓️ <b>Available Seasons:</b> %s (%d Seasons)\n", strings.Join(sNames, ", "), len(seasonsList)))
+	} else if len(seasonsList) == 1 {
+		sbOverview.WriteString(fmt.Sprintf("🗓️ <b>Available Season:</b> Season %d\n", seasonsList[0]))
+	}
 	sbOverview.WriteString(fmt.Sprintf("📁 <b>Total Items:</b> %d (%d Season Packs + %d Episodes)\n",
 		series.Total, len(series.Packs), len(series.Episodes)))
 	sbOverview.WriteString("━━━━━━━━━━━━━━━━━━━━━━\n\n")
@@ -434,10 +443,10 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 					}
 					if isDirectHubCloud(dest) {
 						qSB.WriteString(fmt.Sprintf("📁 <code>%s</code>\n%s   └ ⚡ <b>Direct HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
-							html.EscapeString(name), sizeLine, dest, dest))
+							html.EscapeString(name), sizeLine, html.EscapeString(dest), html.EscapeString(dest)))
 					} else {
 						qSB.WriteString(fmt.Sprintf("📁 <code>%s</code>\n%s   └ 🔗 <b>Mediator Link:</b> <a href=\"%s\">%s</a>\n\n",
-							html.EscapeString(name), sizeLine, dest, dest))
+							html.EscapeString(name), sizeLine, html.EscapeString(dest), html.EscapeString(dest)))
 					}
 				}
 			}
@@ -468,10 +477,10 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 					}
 					if isDirectHubCloud(dest) {
 						qSB.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>Direct HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
-							html.EscapeString(name), sizeLine, dest, dest))
+							html.EscapeString(name), sizeLine, html.EscapeString(dest), html.EscapeString(dest)))
 					} else {
 						qSB.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ 🔗 <b>Mediator Link:</b> <a href=\"%s\">%s</a>\n\n",
-							html.EscapeString(name), sizeLine, dest, dest))
+							html.EscapeString(name), sizeLine, html.EscapeString(dest), html.EscapeString(dest)))
 					}
 				}
 			}
@@ -480,17 +489,31 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 		}
 	}
 
-	// Send / Edit Overview
-	if statusMsg != nil {
-		if _, err := b.teleBot.Edit(statusMsg, sbOverview.String(), tele.ModeHTML); err != nil {
-			log.Printf("[Bot] Failed to edit statusMsg overview: %v, sending via chunker", err)
-			b.sendTelegramMessage(c.Recipient(), sbOverview.String())
-		}
-	} else {
-		b.sendTelegramMessage(c.Recipient(), sbOverview.String())
+	var fullSB strings.Builder
+	fullSB.WriteString(sbOverview.String())
+	for _, block := range msgBlocks {
+		fullSB.WriteString(block)
 	}
 
-	// Dispatch chunked messages safely using sendTelegramMessage
+	// 1. If all content fits in a single message (< 3500 chars), edit statusMsg directly
+	if fullSB.Len() < 3500 && statusMsg != nil {
+		if _, err := b.teleBot.Edit(statusMsg, fullSB.String(), tele.ModeHTML); err == nil {
+			return nil
+		}
+	}
+
+	// 2. Multi-part response: Inform user that categorized cards are delivering below
+	overviewText := fmt.Sprintf("%s<i>Delivering all %d categorized releases below:</i>", sbOverview.String(), series.Total)
+	if statusMsg != nil {
+		if _, err := b.teleBot.Edit(statusMsg, overviewText, tele.ModeHTML); err != nil {
+			log.Printf("[Bot] Failed to edit statusMsg overview: %v, sending via chunker", err)
+			b.sendTelegramMessage(c.Recipient(), overviewText)
+		}
+	} else {
+		b.sendTelegramMessage(c.Recipient(), overviewText)
+	}
+
+	// 3. Dispatch chunked messages safely using sendTelegramMessage
 	for _, block := range msgBlocks {
 		b.sendTelegramMessage(c.Recipient(), block)
 	}
@@ -627,13 +650,29 @@ func (b *Bot) sendTelegramMessage(recipient tele.Recipient, text string) {
 		if chunk == "" {
 			continue
 		}
-		if _, err := b.teleBot.Send(recipient, chunk, tele.ModeHTML); err != nil {
-			log.Printf("[Bot] HTML send failed: %v, retrying plain text", err)
-			if _, plainErr := b.teleBot.Send(recipient, chunk); plainErr != nil {
-				log.Printf("[Bot] Plain text send failed: %v", plainErr)
+		var err error
+		for attempt := 0; attempt < 3; attempt++ {
+			_, err = b.teleBot.Send(recipient, chunk, tele.ModeHTML)
+			if err == nil {
+				break
 			}
+			errLower := strings.ToLower(err.Error())
+			if strings.Contains(errLower, "flood") || strings.Contains(errLower, "too many requests") || strings.Contains(errLower, "retry after") {
+				log.Printf("[Bot] Telegram rate limit encountered: %v. Backing off 2.5s before retry...", err)
+				time.Sleep(2500 * time.Millisecond)
+				continue
+			}
+			log.Printf("[Bot] HTML send failed: %v, retrying plain text", err)
+			_, err = b.teleBot.Send(recipient, chunk)
+			if err == nil {
+				break
+			}
+			time.Sleep(1 * time.Second)
 		}
-		time.Sleep(300 * time.Millisecond)
+		if err != nil {
+			log.Printf("[Bot] Failed to send message chunk after retries: %v", err)
+		}
+		time.Sleep(600 * time.Millisecond)
 	}
 }
 
@@ -660,7 +699,7 @@ func (b *Bot) handleDownloadLinks(c tele.Context, matches []string) error {
 				for i, res := range enqueueResp.Results {
 					dest := cleanURL(res.Destination)
 					if strings.Contains(dest, "hubcloud") {
-						sb.WriteString(fmt.Sprintf("<b>#%d:</b> ⚡ <a href=\"%s\"><b>Direct HubCloud Link</b></a>\n<code>%s</code>\n\n", i+1, dest, dest))
+						sb.WriteString(fmt.Sprintf("<b>#%d:</b> ⚡ <a href=\"%s\"><b>Direct HubCloud Link</b></a>\n<code>%s</code>\n\n", i+1, html.EscapeString(dest), html.EscapeString(dest)))
 					}
 				}
 				if statusMsg != nil {
@@ -934,7 +973,7 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 					sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
 				}
 				mSB.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>Direct HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
-					html.EscapeString(name), sizeLine, dest, dest))
+					html.EscapeString(name), sizeLine, html.EscapeString(dest), html.EscapeString(dest)))
 			}
 			msgBlocks = append(msgBlocks, mSB.String())
 		}
@@ -968,7 +1007,7 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 						sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
 					}
 					qSB.WriteString(fmt.Sprintf("📁 <code>%s</code>\n%s   └ ⚡ <b>Direct HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
-						html.EscapeString(name), sizeLine, dest, dest))
+						html.EscapeString(name), sizeLine, html.EscapeString(dest), html.EscapeString(dest)))
 				}
 			}
 
@@ -990,7 +1029,7 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 						sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
 					}
 					qSB.WriteString(fmt.Sprintf("📄 <code>%s</code>\n%s   └ ⚡ <b>Direct HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
-						html.EscapeString(name), sizeLine, dest, dest))
+						html.EscapeString(name), sizeLine, html.EscapeString(dest), html.EscapeString(dest)))
 				}
 			}
 
@@ -1022,7 +1061,7 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 						titleLine = fmt.Sprintf("📄 <code>%s</code>\n", html.EscapeString(res.Title))
 					}
 					oSB.WriteString(fmt.Sprintf("<b>#%d:</b> %s <a href=\"%s\"><b>Direct HubCloud Link</b></a>\n%s<code>%s</code>\n⚡ Speed: %s\n\n",
-						i+1, tag, dest, titleLine, dest, formatDuration(res.Duration)))
+						i+1, tag, html.EscapeString(dest), titleLine, html.EscapeString(dest), formatDuration(res.Duration)))
 				} else {
 					oSB.WriteString(fmt.Sprintf("<b>#%d:</b> ⚠️ <i>Skipped non-HubCloud link</i>\n\n", i+1))
 				}
