@@ -26,14 +26,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     libnss3 \
     libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
     libdrm2 \
     libxcomposite1 \
     libxdamage1 \
+    libxfixes3 \
     libxrandr2 \
     libgbm1 \
     libasound2 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
+    libxkbcommon0 \
+    libxshmfence1 \
+    libgl1 \
+    libgtk-3-0 \
+    libxtst6 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -49,7 +57,7 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     playwright
 
 # Install Playwright browser and dependencies
-RUN python3 -m patchright install chromium
+RUN python3 -m patchright install --with-deps chromium || python3 -m patchright install chromium
 RUN npx --yes playwright install chromium --with-deps || true
 RUN if [ -d "/root/.cache/ms-playwright" ]; then \
       mkdir -p /usr/local/lib/python3.11/dist-packages/patchright/driver/package/.local-browsers && \
