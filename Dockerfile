@@ -38,6 +38,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+ENV PLAYWRIGHT_BROWSERS_PATH=0
+
 # Install Python stealth scraping dependencies
 RUN pip3 install --no-cache-dir --break-system-packages \
     "scrapling[fetchers]" \
@@ -47,8 +49,16 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     playwright
 
 # Install Playwright browser and dependencies
+RUN python3 -m patchright install chromium
 RUN npx --yes playwright install chromium --with-deps || true
-RUN python3 -m patchright install chromium || true
+RUN if [ -d "/root/.cache/ms-playwright" ]; then \
+      mkdir -p /usr/local/lib/python3.11/dist-packages/patchright/driver/package/.local-browsers && \
+      cp -r /root/.cache/ms-playwright/* /usr/local/lib/python3.11/dist-packages/patchright/driver/package/.local-browsers/ 2>/dev/null || true; \
+    fi
+RUN if [ -d "/usr/local/lib/python3.11/dist-packages/patchright/driver/package/.local-browsers" ]; then \
+      mkdir -p /root/.cache/ms-playwright && \
+      cp -r /usr/local/lib/python3.11/dist-packages/patchright/driver/package/.local-browsers/* /root/.cache/ms-playwright/ 2>/dev/null || true; \
+    fi
 
 # Copy Node.js package manifests and install production dependencies
 COPY package*.json ./
