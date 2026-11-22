@@ -40,8 +40,9 @@ WORKDIR /app
 
 # Install Python stealth scraping dependencies
 RUN pip3 install --no-cache-dir --break-system-packages \
-    scrapling \
+    "scrapling[fetchers]" \
     curl_cffi \
+    msgspec \
     patchright \
     playwright
 
