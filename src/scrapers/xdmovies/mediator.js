@@ -145,7 +145,7 @@ async function resolveXDMoviesMediatorUnlocked(mediatorUrl, options = {}) {
           {
             windowsHide: true,
             detached: process.platform !== 'win32',
-            timeout: 125000, // Kill child before 130s hard deadline
+            timeout: 125000, // Kill child before hard deadline
             env: {
               ...process.env,
               ...(process.platform === 'win32' && process.env.PLAYWRIGHT_BROWSERS_PATH === '0'
@@ -156,11 +156,23 @@ async function resolveXDMoviesMediatorUnlocked(mediatorUrl, options = {}) {
           (error, stdout, stderr) => {
             signal?.removeEventListener('abort', onAbort);
             if (error) {
-              resolve({ success: false, error: error.message });
+              let cleanErr = error.message || 'Scraper process error';
+              if (error.code === 'ETIMEDOUT' || error.killed) {
+                cleanErr = 'Resolution timed out during verification challenge';
+              } else if (cleanErr.includes('Command failed:')) {
+                const errLines = (stderr || stdout || '').trim().split('\n').filter(Boolean);
+                const lastErrLine = errLines.length > 0 ? errLines[errLines.length - 1] : '';
+                if (lastErrLine && !lastErrLine.includes('<launching>')) {
+                  cleanErr = lastErrLine.slice(0, 160);
+                } else {
+                  cleanErr = 'Resolution process exited unexpectedly';
+                }
+              }
+              resolve({ success: false, error: cleanErr });
               return;
             }
             try {
-              const lines = stdout.trim().split('\n');
+              const lines = stdout.trim().split('\n').filter(Boolean);
               const lastLine = lines[lines.length - 1];
               resolve(JSON.parse(lastLine));
             } catch (e) {
@@ -627,6 +639,21 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
     return resolveXDMoviesMediatorUnlocked(mediatorUrl, options);
   }
 
+  // 1. Wait for semaphore permit FIRST with caller's cancellation signal
+  let release;
+  try {
+    release = await mediatorResolutionSemaphore.acquire(options.signal);
+  } catch {
+    return {
+      success: false,
+      destination: null,
+      error: options.signal?.aborted ? 'Resolution cancelled before a worker became available' : 'Failed to acquire resolution worker',
+      metadata: null,
+      elapsedMs: Date.now() - queuedAt,
+    };
+  }
+
+  // 2. NOW that we have acquired the worker permit, start the execution deadline timer!
   const parsedTimeoutSeconds = Number.parseInt(process.env.REQUEST_TIMEOUT_SECONDS || '130', 10);
   const timeoutSeconds = Number.isFinite(parsedTimeoutSeconds) ? Math.max(1, parsedTimeoutSeconds) : 130;
   const timeoutMs = timeoutSeconds * 1000;
@@ -634,30 +661,13 @@ export async function resolveXDMoviesMediator(mediatorUrl, options = {}) {
   const relayCallerAbort = () => deadlineController.abort(options.signal?.reason);
   if (options.signal?.aborted) relayCallerAbort();
   else options.signal?.addEventListener('abort', relayCallerAbort, { once: true });
+
   const deadlineTimer = setTimeout(() => {
     deadlineController.abort(new Error(`Resolution timed out after ${timeoutSeconds} seconds`));
   }, timeoutMs);
   deadlineTimer.unref?.();
-  const resolverOptions = { ...options, signal: deadlineController.signal };
 
-  let release;
-  try {
-    release = await mediatorResolutionSemaphore.acquire(deadlineController.signal);
-  } catch {
-    const timedOut = !options.signal?.aborted;
-    return {
-      success: false,
-      destination: null,
-      error: timedOut ? `Resolution timed out after ${timeoutSeconds} seconds` : 'Resolution cancelled before a worker became available',
-      metadata: null,
-      elapsedMs: Date.now() - queuedAt,
-    };
-  } finally {
-    if (!release) {
-      clearTimeout(deadlineTimer);
-      options.signal?.removeEventListener('abort', relayCallerAbort);
-    }
-  }
+  const resolverOptions = { ...options, signal: deadlineController.signal, timeoutMs };
 
   try {
     const result = await resolveXDMoviesMediatorUnlocked(mediatorUrl, resolverOptions);

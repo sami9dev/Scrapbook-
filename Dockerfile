@@ -77,6 +77,7 @@ COPY . .
 
 # Copy compiled Go bot binary from builder stage
 COPY --from=go-builder /build/bot /app/go-telegram-bot/bot
+COPY --from=go-builder /build/bot /app/go-telegram-bot/bot-linux
 RUN chmod -R 777 /app
 RUN chmod +x /app/go-telegram-bot/bot /app/start.sh
 

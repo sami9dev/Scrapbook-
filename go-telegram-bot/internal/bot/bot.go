@@ -813,7 +813,7 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 			// not consume the time available for the actual resolution.
 			resolveTimeout := b.resolver.Timeout()
 			if resolveTimeout <= 0 {
-				resolveTimeout = 90 * time.Second
+				resolveTimeout = 150 * time.Second
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), resolveTimeout)
 			defer cancel()
@@ -1048,7 +1048,11 @@ func (b *Bot) processBatchAsync(c tele.Context, statusMsg *tele.Message, urls []
 			if errors.Is(res.Err, cache.ErrDeadLink) || res.IsDead {
 				oSB.WriteString(fmt.Sprintf("<b>#%d:</b> ❌ <b>Dead / Expired Link (404)</b>\n<i>Source returned invalid token or HubCloud ID not found</i>\n\n", i+1))
 			} else if res.Err != nil {
-				oSB.WriteString(fmt.Sprintf("<b>#%d:</b> ⚠️ <b>Resolution Failed</b>: %s\n\n", i+1, html.EscapeString(res.Err.Error())))
+				errStr := res.Err.Error()
+				if strings.Contains(errStr, "<launching>") || strings.Contains(errStr, "chrome-linux64") || strings.Contains(errStr, "Command failed:") || len(errStr) > 200 {
+					errStr = "Resolution timed out during verification challenge"
+				}
+				oSB.WriteString(fmt.Sprintf("<b>#%d:</b> ⚠️ <b>Resolution Failed</b>: %s\n\n", i+1, html.EscapeString(errStr)))
 			} else {
 				dest := cleanURL(res.Destination)
 				tag := "⚡"

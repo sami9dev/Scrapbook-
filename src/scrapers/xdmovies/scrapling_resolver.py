@@ -209,7 +209,7 @@ def resolve_mediator(url):
     profile_dir = tempfile.mkdtemp(prefix=f"scrapling_p_{os.getpid()}_{int(time.time()*1000)}_")
     try:
         with StealthySession(headless=True, solve_cloudflare=True, user_data_dir=profile_dir) as session:
-            session.fetch(url, page_action=page_automation, timeout=75000)
+            session.fetch(url, page_action=page_automation, timeout=110000)
     except Exception as err:
         result["error"] = str(err)
     finally:

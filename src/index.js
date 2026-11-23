@@ -136,11 +136,10 @@ export async function startServer() {
         }
 
         const candidatePaths = [
-          path.resolve(__dirname, '..', 'go-telegram-bot', process.platform === 'win32' ? 'bot.exe' : 'bot-linux'),
-          path.resolve(__dirname, '..', 'go-telegram-bot', 'bot'),
-          path.resolve(__dirname, '..', 'go-telegram-bot', 'bot-linux'),
-          path.resolve(__dirname, '..', 'go-telegram-bot', 'bot.exe'),
           '/app/go-telegram-bot/bot',
+          path.resolve(__dirname, '..', 'go-telegram-bot', 'bot'),
+          path.resolve(__dirname, '..', 'go-telegram-bot', process.platform === 'win32' ? 'bot.exe' : 'bot-linux'),
+          path.resolve(__dirname, '..', 'go-telegram-bot', 'bot.exe'),
         ];
 
         let botBin = null;
@@ -160,7 +159,7 @@ export async function startServer() {
             ...process.env,
             LOCAL_RESOLVER_API: `http://127.0.0.1:${config.port}/api/resolve-link`,
             RESOLVER_LOCAL_API: `http://127.0.0.1:${config.port}/api/resolve-link`,
-            WORKER_CONCURRENCY: process.env.WORKER_CONCURRENCY || '2',
+            WORKER_CONCURRENCY: process.env.WORKER_CONCURRENCY || '1',
             PORT: String(config.port),
           };
           let isShuttingDown = false;
