@@ -27,3 +27,4 @@ scratch/
 .wrangler
 .dev.vars*
 !.dev.vars.example
+bot.exe*

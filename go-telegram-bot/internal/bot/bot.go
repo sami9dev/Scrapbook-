@@ -2,6 +2,8 @@ package bot
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"html"
@@ -9,6 +11,7 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -43,6 +46,7 @@ type Bot struct {
 	resolver    *resolver.Resolver
 	cache       *cache.MemoryCache
 	resolveSlot chan struct{}
+	seriesCache sync.Map
 	startTime   time.Time
 }
 
@@ -84,6 +88,7 @@ func (b *Bot) registerHandlers() {
 	b.teleBot.Handle("/stats", b.handleStats)
 	b.teleBot.Handle("/cache", b.handleCache)
 	b.teleBot.Handle(tele.OnText, b.handleText)
+	b.teleBot.Handle(tele.OnCallback, b.handleCallback)
 }
 
 func (b *Bot) handleStart(c tele.Context) error {
@@ -318,6 +323,222 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 	}
 
 	// Case B: TV Series
+	seasonsList := getAvailableSeasons(series)
+
+	// If it's a small series (<= 8 items total, single season, no packs), display directly
+	if len(seasonsList) <= 1 && len(series.Packs) == 0 && len(series.Episodes) <= 8 {
+		msgBlocks := b.formatSeriesBlocks(series, 0, "all")
+		var fullSB strings.Builder
+		fullSB.WriteString(fmt.Sprintf("🔥 <b>%s</b>\n", html.EscapeString(series.Title)))
+		fullSB.WriteString(fmt.Sprintf("⚡ <i>Retrieved in %s</i>\n", formatDuration(duration)))
+		fullSB.WriteString(fmt.Sprintf("📁 <b>Available Releases:</b> %d\n", series.Total))
+		fullSB.WriteString("━━━━━━━━━━━━━━━━━━━━━━\n\n")
+		for _, blk := range msgBlocks {
+			fullSB.WriteString(blk)
+		}
+		if statusMsg != nil {
+			if _, err := b.teleBot.Edit(statusMsg, fullSB.String(), tele.ModeHTML); err == nil {
+				return nil
+			}
+		}
+		b.sendTelegramMessage(c.Recipient(), fullSB.String())
+		return nil
+	}
+
+	// Interactive Menu Mode: Store series in memory cache and present selection buttons
+	seriesKey := makeSeriesKey(series)
+	b.seriesCache.Store(seriesKey, series)
+
+	var sbOverview strings.Builder
+	sbOverview.WriteString(fmt.Sprintf("🔥 <b>%s</b>\n", html.EscapeString(series.Title)))
+	sbOverview.WriteString(fmt.Sprintf("⚡ <i>Retrieved in %s</i>\n", formatDuration(duration)))
+	if len(seasonsList) > 1 {
+		var sNames []string
+		for _, s := range seasonsList {
+			sNames = append(sNames, fmt.Sprintf("Season %d", s))
+		}
+		sbOverview.WriteString(fmt.Sprintf("🗓️ <b>Available Seasons:</b> %s (%d Seasons)\n", strings.Join(sNames, ", "), len(seasonsList)))
+	} else if len(seasonsList) == 1 {
+		sbOverview.WriteString(fmt.Sprintf("🗓️ <b>Available Season:</b> Season %d\n", seasonsList[0]))
+	}
+	sbOverview.WriteString(fmt.Sprintf("📁 <b>Total Items:</b> %d (%d Season Packs + %d Episodes)\n",
+		series.Total, len(series.Packs), len(series.Episodes)))
+	sbOverview.WriteString("━━━━━━━━━━━━━━━━━━━━━━\n")
+	sbOverview.WriteString("👇 <b>Select an option below:</b>")
+
+	menu := b.buildSeriesMainMenu(seriesKey, series, seasonsList)
+
+	if statusMsg != nil {
+		if _, err := b.teleBot.Edit(statusMsg, sbOverview.String(), menu, tele.ModeHTML); err == nil {
+			return nil
+		}
+	}
+
+	_, err := b.teleBot.Send(c.Recipient(), sbOverview.String(), menu, tele.ModeHTML)
+	return err
+}
+
+func makeSeriesKey(series *resolver.SeriesResult) string {
+	h := sha256.Sum256([]byte(series.URL + "::" + series.Title))
+	return hex.EncodeToString(h[:])[:8]
+}
+
+func getAvailableSeasons(series *resolver.SeriesResult) []int {
+	seasonsMap := make(map[int]bool)
+	for _, p := range series.Packs {
+		s := p.Season
+		if s <= 0 {
+			s = 1
+		}
+		seasonsMap[s] = true
+	}
+	for _, ep := range series.Episodes {
+		s := ep.Season
+		if s <= 0 {
+			s = 1
+		}
+		seasonsMap[s] = true
+	}
+	var seasons []int
+	for s := range seasonsMap {
+		seasons = append(seasons, s)
+	}
+	sort.Ints(seasons)
+	return seasons
+}
+
+func countSeasonItems(series *resolver.SeriesResult, season int) int {
+	return countSeasonPacks(series, season) + countSeasonEpisodes(series, season)
+}
+
+func countSeasonPacks(series *resolver.SeriesResult, season int) int {
+	count := 0
+	for _, p := range series.Packs {
+		s := p.Season
+		if s <= 0 {
+			s = 1
+		}
+		if s == season {
+			count++
+		}
+	}
+	return count
+}
+
+func countSeasonEpisodes(series *resolver.SeriesResult, season int) int {
+	count := 0
+	for _, ep := range series.Episodes {
+		s := ep.Season
+		if s <= 0 {
+			s = 1
+		}
+		if s == season {
+			count++
+		}
+	}
+	return count
+}
+
+func (b *Bot) buildSeriesMainMenu(seriesKey string, series *resolver.SeriesResult, seasonsList []int) *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	var rows [][]tele.InlineButton
+
+	// Row 1: Complete Season Packs (Zips) button if packs exist
+	if len(series.Packs) > 0 {
+		rows = append(rows, []tele.InlineButton{
+			{
+				Text: fmt.Sprintf("📦 Complete Season Packs (Zips) [%d]", len(series.Packs)),
+				Data: fmt.Sprintf("packs:0:%s", seriesKey),
+			},
+		})
+	}
+
+	// Row 2: Season buttons (Season 1, Season 2, etc.)
+	if len(seasonsList) > 1 {
+		var sBtns []tele.InlineButton
+		for _, s := range seasonsList {
+			count := countSeasonItems(series, s)
+			sBtns = append(sBtns, tele.InlineButton{
+				Text: fmt.Sprintf("📺 Season %d (%d)", s, count),
+				Data: fmt.Sprintf("menu:%d:%s", s, seriesKey),
+			})
+		}
+		for i := 0; i < len(sBtns); i += 2 {
+			end := i + 2
+			if end > len(sBtns) {
+				end = len(sBtns)
+			}
+			rows = append(rows, sBtns[i:end])
+		}
+	} else if len(seasonsList) == 1 {
+		s := seasonsList[0]
+		epCount := countSeasonEpisodes(series, s)
+		if epCount > 0 {
+			rows = append(rows, []tele.InlineButton{
+				{
+					Text: fmt.Sprintf("🎞️ Episodes Only [%d]", epCount),
+					Data: fmt.Sprintf("ep:%d:%s", s, seriesKey),
+				},
+			})
+		}
+	}
+
+	// Row 3: Deliver All button
+	rows = append(rows, []tele.InlineButton{
+		{
+			Text: fmt.Sprintf("⚡ Deliver All Releases (%d)", series.Total),
+			Data: fmt.Sprintf("all:0:%s", seriesKey),
+		},
+	})
+
+	menu.InlineKeyboard = rows
+	return menu
+}
+
+func (b *Bot) buildSeasonSubmenu(seriesKey string, series *resolver.SeriesResult, season int) *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	var rows [][]tele.InlineButton
+
+	packsCount := countSeasonPacks(series, season)
+	epCount := countSeasonEpisodes(series, season)
+
+	if packsCount > 0 {
+		rows = append(rows, []tele.InlineButton{
+			{
+				Text: fmt.Sprintf("📦 Season %d Packs (Zips) [%d]", season, packsCount),
+				Data: fmt.Sprintf("packs:%d:%s", season, seriesKey),
+			},
+		})
+	}
+
+	if epCount > 0 {
+		rows = append(rows, []tele.InlineButton{
+			{
+				Text: fmt.Sprintf("🎞️ Season %d Episodes [%d]", season, epCount),
+				Data: fmt.Sprintf("ep:%d:%s", season, seriesKey),
+			},
+		})
+	}
+
+	rows = append(rows, []tele.InlineButton{
+		{
+			Text: fmt.Sprintf("⚡ Deliver All Season %d [%d]", season, packsCount+epCount),
+			Data: fmt.Sprintf("all:%d:%s", season, seriesKey),
+		},
+	})
+
+	rows = append(rows, []tele.InlineButton{
+		{
+			Text: "🔙 Back to Seasons",
+			Data: fmt.Sprintf("back:0:%s", seriesKey),
+		},
+	})
+
+	menu.InlineKeyboard = rows
+	return menu
+}
+
+func (b *Bot) formatSeriesBlocks(series *resolver.SeriesResult, targetSeason int, filterType string) []string {
 	type qualitySection struct {
 		Category string
 		Rank     int
@@ -360,54 +581,54 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 		return sg.Qualities[cat]
 	}
 
-	// 1. Add all Season Packs
-	for _, p := range series.Packs {
-		dest := p.ProviderURL
-		if dest == "" {
-			dest = p.MediatorURL
+	// 1. Add all Season Packs (if not episodes-only)
+	if filterType != "episodes" {
+		for _, p := range series.Packs {
+			s := p.Season
+			if s <= 0 {
+				s = 1
+			}
+			if targetSeason > 0 && s != targetSeason {
+				continue
+			}
+			dest := p.ProviderURL
+			if dest == "" {
+				dest = p.MediatorURL
+			}
+			if dest == "" || strings.Contains(strings.ToLower(dest), "hubdrive") || strings.EqualFold(p.Provider, "HubDrive") {
+				continue
+			}
+			sg := getOrCreateSeason(s)
+			qs := getOrCreateQuality(sg, p.Filename, p.Quality)
+			qs.Packs = append(qs.Packs, p)
 		}
-		if dest == "" || strings.Contains(strings.ToLower(dest), "hubdrive") || strings.EqualFold(p.Provider, "HubDrive") {
-			continue
-		}
-		sg := getOrCreateSeason(p.Season)
-		qs := getOrCreateQuality(sg, p.Filename, p.Quality)
-		qs.Packs = append(qs.Packs, p)
 	}
 
-	// 2. Add all Episodes
-	for _, ep := range series.Episodes {
-		dest := ep.ProviderURL
-		if dest == "" {
-			dest = ep.MediatorURL
+	// 2. Add all Episodes (if not packs-only)
+	if filterType != "packs" {
+		for _, ep := range series.Episodes {
+			s := ep.Season
+			if s <= 0 {
+				s = 1
+			}
+			if targetSeason > 0 && s != targetSeason {
+				continue
+			}
+			dest := ep.ProviderURL
+			if dest == "" {
+				dest = ep.MediatorURL
+			}
+			if dest == "" || strings.Contains(strings.ToLower(dest), "hubdrive") || strings.EqualFold(ep.Provider, "HubDrive") {
+				continue
+			}
+			sg := getOrCreateSeason(s)
+			qs := getOrCreateQuality(sg, ep.Filename, ep.Quality)
+			qs.Episodes = append(qs.Episodes, ep)
 		}
-		if dest == "" || strings.Contains(strings.ToLower(dest), "hubdrive") || strings.EqualFold(ep.Provider, "HubDrive") {
-			continue
-		}
-		sg := getOrCreateSeason(ep.Season)
-		qs := getOrCreateQuality(sg, ep.Filename, ep.Quality)
-		qs.Episodes = append(qs.Episodes, ep)
 	}
 
 	sort.Ints(seasonsList)
 
-	// Format Header / Overview
-	var sbOverview strings.Builder
-	sbOverview.WriteString(fmt.Sprintf("🔥 <b>%s</b>\n", html.EscapeString(series.Title)))
-	sbOverview.WriteString(fmt.Sprintf("⚡ <i>Retrieved in %s</i>\n", formatDuration(duration)))
-	if len(seasonsList) > 1 {
-		var sNames []string
-		for _, s := range seasonsList {
-			sNames = append(sNames, fmt.Sprintf("Season %d", s))
-		}
-		sbOverview.WriteString(fmt.Sprintf("🗓️ <b>Available Seasons:</b> %s (%d Seasons)\n", strings.Join(sNames, ", "), len(seasonsList)))
-	} else if len(seasonsList) == 1 {
-		sbOverview.WriteString(fmt.Sprintf("🗓️ <b>Available Season:</b> Season %d\n", seasonsList[0]))
-	}
-	sbOverview.WriteString(fmt.Sprintf("📁 <b>Total Items:</b> %d (%d Season Packs + %d Episodes)\n",
-		series.Total, len(series.Packs), len(series.Episodes)))
-	sbOverview.WriteString("━━━━━━━━━━━━━━━━━━━━━━\n\n")
-
-	// Build blocks per Season -> Quality -> Zip -> Episodes
 	var msgBlocks []string
 	for _, s := range seasonsList {
 		sg := seasonsMap[s]
@@ -451,7 +672,7 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 				}
 			}
 
-			// Individual episodes for this quality right below the zip!
+			// Individual episodes
 			if len(qs.Episodes) > 0 {
 				sort.Slice(qs.Episodes, func(i, j int) bool {
 					return qs.Episodes[i].Episode < qs.Episodes[j].Episode
@@ -485,40 +706,146 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 				}
 			}
 
-			msgBlocks = append(msgBlocks, qSB.String())
+			if len(qs.Packs) > 0 || len(qs.Episodes) > 0 {
+				msgBlocks = append(msgBlocks, qSB.String())
+			}
 		}
 	}
 
-	var fullSB strings.Builder
-	fullSB.WriteString(sbOverview.String())
-	for _, block := range msgBlocks {
-		fullSB.WriteString(block)
+	return msgBlocks
+}
+
+func (b *Bot) handleCallback(c tele.Context) error {
+	cb := c.Callback()
+	if cb == nil {
+		return nil
+	}
+	data := strings.TrimSpace(cb.Data)
+	if data == "" {
+		return c.Respond()
 	}
 
-	// 1. If all content fits in a single message (< 3500 chars), edit statusMsg directly
-	if fullSB.Len() < 3500 && statusMsg != nil {
-		if _, err := b.teleBot.Edit(statusMsg, fullSB.String(), tele.ModeHTML); err == nil {
+	parts := strings.Split(data, ":")
+	if len(parts) < 3 {
+		return c.Respond()
+	}
+
+	action := parts[0]
+	seasonNum, _ := strconv.Atoi(parts[1])
+	seriesKey := parts[2]
+
+	val, ok := b.seriesCache.Load(seriesKey)
+	if !ok {
+		return c.Respond(&tele.CallbackResponse{
+			Text:      "⚠️ Selection session expired. Please re-send the series URL or title.",
+			ShowAlert: true,
+		})
+	}
+	series := val.(*resolver.SeriesResult)
+
+	switch action {
+	case "menu":
+		submenu := b.buildSeasonSubmenu(seriesKey, series, seasonNum)
+		pCount := countSeasonPacks(series, seasonNum)
+		epCount := countSeasonEpisodes(series, seasonNum)
+		text := fmt.Sprintf("📺 <b>%s • Season %d</b>\n\n📁 <b>Available:</b> %d Season Packs + %d Episodes\n━━━━━━━━━━━━━━━━━━━━━━\n👇 <i>Select what to deliver:</i>",
+			html.EscapeString(series.Title), seasonNum, pCount, epCount)
+		_ = c.Respond()
+		if cb.Message != nil {
+			_, err := b.teleBot.Edit(cb.Message, text, submenu, tele.ModeHTML)
+			if err != nil {
+				log.Printf("[Bot] Edit callback error: %v", err)
+			}
+		}
+		return nil
+
+	case "back":
+		seasonsList := getAvailableSeasons(series)
+		mainMenu := b.buildSeriesMainMenu(seriesKey, series, seasonsList)
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("🔥 <b>%s</b>\n", html.EscapeString(series.Title)))
+		if len(seasonsList) > 1 {
+			var sNames []string
+			for _, s := range seasonsList {
+				sNames = append(sNames, fmt.Sprintf("Season %d", s))
+			}
+			sb.WriteString(fmt.Sprintf("🗓️ <b>Available Seasons:</b> %s (%d Seasons)\n", strings.Join(sNames, ", "), len(seasonsList)))
+		} else if len(seasonsList) == 1 {
+			sb.WriteString(fmt.Sprintf("🗓️ <b>Available Season:</b> Season %d\n", seasonsList[0]))
+		}
+		sb.WriteString(fmt.Sprintf("📁 <b>Total Items:</b> %d (%d Season Packs + %d Episodes)\n",
+			series.Total, len(series.Packs), len(series.Episodes)))
+		sb.WriteString("━━━━━━━━━━━━━━━━━━━━━━\n")
+		sb.WriteString("👇 <b>Select an option below:</b>")
+
+		_ = c.Respond()
+		if cb.Message != nil {
+			_, err := b.teleBot.Edit(cb.Message, sb.String(), mainMenu, tele.ModeHTML)
+			if err != nil {
+				log.Printf("[Bot] Edit back callback error: %v", err)
+			}
+		}
+		return nil
+
+	case "packs":
+		_ = c.Respond(&tele.CallbackResponse{Text: "Delivering Complete Season Packs (Zips)..."})
+		blocks := b.formatSeriesBlocks(series, seasonNum, "packs")
+		if len(blocks) == 0 {
+			b.sendTelegramMessage(c.Recipient(), "⚠️ No Season Packs found for this selection.")
 			return nil
 		}
-	}
-
-	// 2. Multi-part response: Inform user that categorized cards are delivering below
-	overviewText := fmt.Sprintf("%s<i>Delivering all %d categorized releases below:</i>", sbOverview.String(), series.Total)
-	if statusMsg != nil {
-		if _, err := b.teleBot.Edit(statusMsg, overviewText, tele.ModeHTML); err != nil {
-			log.Printf("[Bot] Failed to edit statusMsg overview: %v, sending via chunker", err)
-			b.sendTelegramMessage(c.Recipient(), overviewText)
+		header := ""
+		if seasonNum > 0 {
+			header = fmt.Sprintf("📦 <b>Season %d Complete Packs (Zips) - %s:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n", seasonNum, html.EscapeString(series.Title))
+		} else {
+			header = fmt.Sprintf("📦 <b>Complete Season Packs (Zips) - %s:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n", html.EscapeString(series.Title))
 		}
-	} else {
-		b.sendTelegramMessage(c.Recipient(), overviewText)
+		b.sendTelegramMessage(c.Recipient(), header+blocks[0])
+		for _, blk := range blocks[1:] {
+			b.sendTelegramMessage(c.Recipient(), blk)
+		}
+		return nil
+
+	case "ep":
+		_ = c.Respond(&tele.CallbackResponse{Text: "Delivering Episodes..."})
+		blocks := b.formatSeriesBlocks(series, seasonNum, "episodes")
+		if len(blocks) == 0 {
+			b.sendTelegramMessage(c.Recipient(), "⚠️ No episodes found for this selection.")
+			return nil
+		}
+		header := ""
+		if seasonNum > 0 {
+			header = fmt.Sprintf("🎞️ <b>Season %d Episodes - %s:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n", seasonNum, html.EscapeString(series.Title))
+		} else {
+			header = fmt.Sprintf("🎞️ <b>Episodes - %s:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n", html.EscapeString(series.Title))
+		}
+		b.sendTelegramMessage(c.Recipient(), header+blocks[0])
+		for _, blk := range blocks[1:] {
+			b.sendTelegramMessage(c.Recipient(), blk)
+		}
+		return nil
+
+	case "all":
+		_ = c.Respond(&tele.CallbackResponse{Text: "Delivering releases..."})
+		blocks := b.formatSeriesBlocks(series, seasonNum, "all")
+		if len(blocks) == 0 {
+			b.sendTelegramMessage(c.Recipient(), "⚠️ No releases found for this selection.")
+			return nil
+		}
+		header := ""
+		if seasonNum > 0 {
+			header = fmt.Sprintf("📺 <b>Season %d All Releases - %s:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n", seasonNum, html.EscapeString(series.Title))
+		} else {
+			header = fmt.Sprintf("🔥 <b>%s - All Releases (%d):</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n", html.EscapeString(series.Title), series.Total)
+		}
+		b.sendTelegramMessage(c.Recipient(), header+blocks[0])
+		for _, blk := range blocks[1:] {
+			b.sendTelegramMessage(c.Recipient(), blk)
+		}
+		return nil
 	}
 
-	// 3. Dispatch chunked messages safely using sendTelegramMessage
-	for _, block := range msgBlocks {
-		b.sendTelegramMessage(c.Recipient(), block)
-	}
-
-	return nil
+	return c.Respond()
 }
 
 func cleanURL(u string) string {
