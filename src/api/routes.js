@@ -720,22 +720,6 @@ router.post('/parse-html', async (req, res) => {
   }
 
   try {
-    const isDestinationResolution =
-      html.includes('hubcloud') ||
-      html.includes('gdlink') ||
-      html.includes('/file/') ||
-      html.includes('countdown-number') ||
-      html.includes('success-section') ||
-      html.includes('continue-btn');
-
-    if ((reset || autoReset) && !isDestinationResolution) {
-      if (sourceUrl) {
-        await scrapedLinksRepo.clear({ sourceUrl: sourceUrl.trim() });
-        await jobsRepo.clear({ url: sourceUrl.trim() });
-      }
-      logger.database('Reset completed for direct HTML input session.');
-    }
-
     // Check if pasted HTML or text contains direct HubCloud destination links
     // (e.g. from countdown pages or direct link pastes)
     const { isHubCloudDriveUrl, extractHubCloudDriveId, fetchHubCloudMetadata } = await import('../providers/hubcloud/validator.js');
@@ -920,10 +904,20 @@ router.post('/parse-html', async (req, res) => {
     let effectiveSourceUrl = (sourceUrl || '').trim();
     const isPlaceholderSource = !effectiveSourceUrl || effectiveSourceUrl.includes('source-pasted.local') || effectiveSourceUrl === 'https://4khdhub.one/tv-series/';
     if (isPlaceholderSource) {
-      const canonicalMatch = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)
-        || html.match(/<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i);
-      if (canonicalMatch && canonicalMatch[1]) {
-        const cand = canonicalMatch[1].trim();
+      let cand = '';
+      try {
+        const cheerio = await import('cheerio');
+        const $meta = cheerio.load(html);
+        cand = ($meta('link[rel="canonical"]').attr('href') || $meta('meta[property="og:url"]').attr('content') || '').trim();
+      } catch {}
+      if (!cand) {
+        const canonicalMatch = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)
+          || html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["']canonical["']/i)
+          || html.match(/<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:url["']/i);
+        if (canonicalMatch && canonicalMatch[1]) cand = canonicalMatch[1].trim();
+      }
+      if (cand) {
         try {
           effectiveSourceUrl = cand.startsWith('http') ? cand : new URL(cand, defaultSourceUrl).href;
         } catch {
@@ -931,6 +925,15 @@ router.post('/parse-html', async (req, res) => {
         }
       } else {
         effectiveSourceUrl = defaultSourceUrl;
+      }
+    }
+
+    if (reset || autoReset) {
+      if (effectiveSourceUrl && effectiveSourceUrl !== defaultSourceUrl) {
+        const withoutSlash = effectiveSourceUrl.replace(/\/+$/, '');
+        await scrapedLinksRepo.clear({ sourceUrl: { $in: [withoutSlash, `${withoutSlash}/`] } });
+        await jobsRepo.clear({ url: { $in: [withoutSlash, `${withoutSlash}/`] } });
+        logger.database(`Reset completed for direct HTML input session (${withoutSlash}).`);
       }
     }
 

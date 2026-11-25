@@ -231,7 +231,10 @@ func (b *Bot) handleTitleSearch(c tele.Context, query string) error {
 
 	if err != nil {
 		if statusMsg != nil {
-			_, _ = b.teleBot.Edit(statusMsg, err.Error(), tele.ModeHTML)
+			if _, editErr := b.teleBot.Edit(statusMsg, err.Error(), tele.ModeHTML); editErr != nil {
+				log.Printf("[Bot] Edit titleSearch error: %v", editErr)
+				_, _ = b.teleBot.Edit(statusMsg, err.Error())
+			}
 			return nil
 		}
 		return c.Send(err.Error(), tele.ModeHTML)
@@ -302,7 +305,10 @@ func (b *Bot) handleZipSearch(c tele.Context, query string) error {
 
 	if err != nil {
 		if statusMsg != nil {
-			_, _ = b.teleBot.Edit(statusMsg, err.Error(), tele.ModeHTML)
+			if _, editErr := b.teleBot.Edit(statusMsg, err.Error(), tele.ModeHTML); editErr != nil {
+				log.Printf("[Bot] Edit titleSearch error: %v", editErr)
+				_, _ = b.teleBot.Edit(statusMsg, err.Error())
+			}
 			return nil
 		}
 		return c.Send(err.Error(), tele.ModeHTML)
@@ -377,14 +383,7 @@ func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, seri
 				if name == "" {
 					name = m.Title
 				}
-				dest := cleanURL(m.ProviderURL)
-				if dest == "" && m.MediatorURL != "" {
-					if cached, hit, err := b.cache.GetL1(m.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
-						dest = cleanURL(cached)
-					} else {
-						dest = cleanURL(m.MediatorURL)
-					}
-				}
+				dest := b.resolveDisplayDestination(m)
 				sizeStr := m.SizeDisplay
 				sizeLine := ""
 				if sizeStr != "" {
@@ -589,8 +588,20 @@ func getAvailableZipQualities(series *resolver.SeriesResult, season int) []Quali
 	})
 
 	var result []QualitySummary
+	tagSummaryLabels := map[string]string{
+		"4k":    "4K (2160p)",
+		"1080p": "1080p FHD",
+		"720p":  "720p HD",
+		"480p":  "480p SD",
+	}
 	for _, k := range qKeys {
-		result = append(result, *qMap[k])
+		item := *qMap[k]
+		if item.Count > 1 {
+			if lbl, ok := tagSummaryLabels[k]; ok {
+				item.Label = lbl
+			}
+		}
+		result = append(result, item)
 	}
 	return result
 }
@@ -924,14 +935,7 @@ func (b *Bot) formatSeriesBlocks(series *resolver.SeriesResult, targetSeason int
 					if name == "" {
 						name = p.Title
 					}
-					dest := cleanURL(p.ProviderURL)
-					if dest == "" && p.MediatorURL != "" {
-						if cached, hit, err := b.cache.GetL1(p.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
-							dest = cleanURL(cached)
-						} else {
-							dest = cleanURL(p.MediatorURL)
-						}
-					}
+					dest := b.resolveDisplayDestination(p)
 					sizeStr := p.SizeDisplay
 					sizeLine := ""
 					if sizeStr != "" {
@@ -958,14 +962,7 @@ func (b *Bot) formatSeriesBlocks(series *resolver.SeriesResult, targetSeason int
 					if name == "" {
 						name = ep.Title
 					}
-					dest := cleanURL(ep.ProviderURL)
-					if dest == "" && ep.MediatorURL != "" {
-						if cached, hit, err := b.cache.GetL1(ep.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
-							dest = cleanURL(cached)
-						} else {
-							dest = cleanURL(ep.MediatorURL)
-						}
-					}
+					dest := b.resolveDisplayDestination(ep)
 					sizeStr := ep.SizeDisplay
 					sizeLine := ""
 					if sizeStr != "" {
@@ -1071,14 +1068,7 @@ func (b *Bot) formatZipBlocks(series *resolver.SeriesResult, targetSeason int, t
 				if name == "" {
 					name = p.Title
 				}
-				dest := cleanURL(p.ProviderURL)
-				if dest == "" && p.MediatorURL != "" {
-					if cached, hit, err := b.cache.GetL1(p.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
-						dest = cleanURL(cached)
-					} else {
-						dest = cleanURL(p.MediatorURL)
-					}
-				}
+				dest := b.resolveDisplayDestination(p)
 				sizeStr := p.SizeDisplay
 				sizeLine := ""
 				if sizeStr != "" {
@@ -1290,6 +1280,19 @@ func (b *Bot) handleCallback(c tele.Context) error {
 
 func cleanURL(u string) string {
 	return strings.Trim(strings.TrimSpace(u), "\"' \t\r\n")
+}
+
+func (b *Bot) resolveDisplayDestination(link resolver.StoredLink) string {
+	dest := cleanURL(link.ProviderURL)
+	if dest == "" && link.MediatorURL != "" {
+		if b.cache != nil {
+			if cached, hit, err := b.cache.GetL1(link.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
+				return cleanURL(cached)
+			}
+		}
+		return cleanURL(link.MediatorURL)
+	}
+	return dest
 }
 
 func isDirectHubCloud(urlStr string) bool {

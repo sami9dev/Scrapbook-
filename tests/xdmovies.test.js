@@ -1,8 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import os from 'node:os';
+import path from 'node:path';
+import { describe, it, expect, vi } from 'vitest';
 import { isXDMoviesUrl, isXDMoviesMediatorUrl } from '../src/scrapers/xdmovies/types.js';
 import { parseXDMoviesCatalogue } from '../src/scrapers/xdmovies/catalogue.js';
 import { canonicalHubCloudUrl } from '../src/scrapers/xdmovies/mediator.js';
 import { resolveXDMovies } from '../src/scrapers/xdmovies/resolver.js';
+import { dbManager } from '../src/database/mongodb.js';
+import { scrapedLinksRepo, jobsRepo } from '../src/database/models.js';
+import * as catalogStore from '../src/utils/catalog-store.js';
+import { createApp } from '../src/index.js';
 
 const SAMPLE_MOVIE_HTML = `
 <!DOCTYPE html>
@@ -207,6 +213,67 @@ describe('XDMovies Catalogue Parser', () => {
     expect(catalogue.seasons[1].releases.length).toBe(4);
     expect(catalogue.seasons[2].releases.length).toBe(4);
     expect(catalogue.seasons.every((s) => s.releases.every((r) => r.scope === 'pack'))).toBe(true);
+  });
+
+  it('auto-detects canonical sourceUrl regardless of attribute order and indexes all 13 packs via /api/parse-html', async () => {
+    await dbManager.connect('mongodb://localhost:27017/test_db', { forceInMemory: true });
+    const origLinksFile = scrapedLinksRepo.collection.storageFile;
+    const origJobsFile = jobsRepo.collection.storageFile;
+    const origLinksDocs = [...scrapedLinksRepo.collection.documents];
+    const origJobsDocs = [...jobsRepo.collection.documents];
+    const tmpDir = os.tmpdir();
+    scrapedLinksRepo.collection.storageFile = path.join(tmpDir, 'test_parse_html_links.json');
+    jobsRepo.collection.storageFile = path.join(tmpDir, 'test_parse_html_jobs.json');
+    scrapedLinksRepo.collection.documents = [];
+    jobsRepo.collection.documents = [];
+    await scrapedLinksRepo.initIndexes();
+    await jobsRepo.initIndexes();
+
+    const catalogSpy = vi.spyOn(catalogStore, 'recordInCatalog').mockImplementation(() => false);
+    const app = await createApp();
+    const server = await new Promise((resolve) => {
+      const s = app.listen(0, () => resolve(s));
+    });
+
+    try {
+      const { port } = server.address();
+      const base = `http://127.0.0.1:${port}/api`;
+      const counts = [5, 4, 4];
+      const sections = counts.map((n, idx) => {
+        const s = idx + 1;
+        const cards = Array.from({ length: n }, (_, i) => {
+          const q = i === 0 ? '2160p' : (i === 1 ? '1080p.H.265' : (i === 2 ? '1080p.H.264' : (i === 3 ? '720p' : '480p')));
+          return `<div class="pack-card"><div class="pack-info"><h4 class="pack-title">Delhi.Crime.S0${s}.${q}.NF.WEB-DL-XDMovies.com.zip</h4><a href="https://link.xdmovies.wtf/download/dc_s${s}_${i}" class="download-button"><span class="size-badge">${(i + 1) * 2}.5 GB</span></a></div></div>`;
+        }).join('');
+        return `<div class="season-section"><button class="toggle-season-btn">Season ${s} Packs/Zips</button><div id="season-packs-${s}" class="season-episodes"><div class="packs-grid">${cards}</div></div></div>`;
+      }).join('');
+
+      // Relative canonical URL with href BEFORE rel
+      const html = `<html><head><link href="/series/delhi-crime-2160p-1080p-hindi-english-download-87508" rel="canonical"><title>Delhi Crime - XDMovies</title></head><body><h2>Delhi Crime</h2><div class="seasons-container">${sections}</div></body></html>`;
+
+      const parseRes = await fetch(`${base}/parse-html`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html, sourceUrl: '', autoReset: true }),
+      }).then((r) => r.json());
+
+      expect(parseRes.success).toBe(true);
+      expect(parseRes.count).toBe(13);
+
+      const byUrl = await fetch(`${base}/links?sourceUrl=${encodeURIComponent('https://huh.xdmovies.wtf/series/delhi-crime-2160p-1080p-hindi-english-download-87508')}&limit=50`).then((r) => r.json());
+      expect(byUrl.length).toBe(13);
+
+      const byTitle = await fetch(`${base}/links?titleSearch=${encodeURIComponent('delhi crime')}&limit=50`).then((r) => r.json());
+      expect(byTitle.length).toBe(13);
+      expect(byTitle.every((r) => r.scope === 'pack')).toBe(true);
+    } finally {
+      server.close();
+      catalogSpy.mockRestore();
+      scrapedLinksRepo.collection.storageFile = origLinksFile;
+      jobsRepo.collection.storageFile = origJobsFile;
+      scrapedLinksRepo.collection.documents = origLinksDocs;
+      jobsRepo.collection.documents = origJobsDocs;
+    }
   });
 });
 

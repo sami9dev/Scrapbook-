@@ -195,19 +195,20 @@ func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*Serie
 	// 3. Fallback: scan all stored links (preserves existing behavior and dev/file fallback)
 	if len(matched) == 0 {
 		allItems := r.fetchAllStoredLinks(ctx)
-		slugWords := strings.Split(slugTitle, "-")
+		slugWords := strings.Fields(slugTitle)
 		for _, item := range allItems {
 			itemSrc := strings.TrimRight(strings.ToLower(item.SourceURL), "/")
-			itemTitle := strings.ToLower(item.Title)
+			itemTitle := normalizeForSearch(item.Title)
+			itemFilename := normalizeForSearch(item.Filename)
 			if itemSrc == normQuery || (slug != "" && strings.Contains(itemSrc, slug)) {
 				matched = append(matched, item)
 				continue
 			}
-			if slugTitle != "" && strings.Contains(itemTitle, slugTitle) {
+			if slugTitle != "" && (strings.Contains(itemTitle, slugTitle) || strings.Contains(itemFilename, slugTitle)) {
 				matched = append(matched, item)
 				continue
 			}
-			if len(slugWords) > 0 && slugWords[0] != "" && strings.Contains(itemTitle, slugWords[0]) {
+			if len(slugWords) > 0 && allWordsPresent(itemTitle+" "+itemFilename, slugWords) {
 				matched = append(matched, item)
 			}
 		}
@@ -239,7 +240,7 @@ func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*Serie
 		}
 
 		if fastErr != nil && strings.Contains(strings.ToLower(fastErr.Error()), "cloudflare") {
-			return nil, errors.New("Blocked by Cloudflare human verification on cloud IP. Open the page in your browser, paste the page HTML at https://linkscrap-bot.onrender.com/ (Paste HTML), then retry /zip <title> here.")
+			return nil, errors.New("Blocked by Cloudflare human verification on cloud IP. Open the page in your browser, paste the page HTML at https://linkscrap-bot.onrender.com/ (Paste HTML), then retry /zip with the title here.")
 		}
 
 		return nil, errors.New("title is not yet cached. Please allow the Render cloud worker to complete scraping.")
@@ -284,18 +285,26 @@ func (r *Resolver) SearchByTitle(ctx context.Context, titleQuery string) (*Serie
 	// 2. Fallback: scan all stored links (preserves existing behavior and dev/file fallback)
 	if len(matched) == 0 {
 		allItems := r.fetchAllStoredLinks(ctx)
+		normSearch := normalizeForSearch(normQuery)
+		searchWords := strings.Fields(normSearch)
 		if len(allItems) > 0 {
 			sourceGroups := make(map[string][]StoredLink)
+			var sourceOrder []string
 			for _, item := range allItems {
+				if _, seen := sourceGroups[item.SourceURL]; !seen {
+					sourceOrder = append(sourceOrder, item.SourceURL)
+				}
 				sourceGroups[item.SourceURL] = append(sourceGroups[item.SourceURL], item)
 			}
-			for src, items := range sourceGroups {
-				normSrc := strings.ToLower(src)
-				title := ""
+			for _, src := range sourceOrder {
+				items := sourceGroups[src]
+				normSrc := normalizeForSearch(src)
+				combinedTitle := ""
 				if len(items) > 0 {
-					title = strings.ToLower(items[0].Title)
+					combinedTitle = normalizeForSearch(items[0].Title + " " + items[0].Filename)
 				}
-				if strings.Contains(normSrc, normQuery) || (title != "" && strings.Contains(title, normQuery)) {
+				if (normSearch != "" && (strings.Contains(normSrc, normSearch) || strings.Contains(combinedTitle, normSearch))) ||
+					(len(searchWords) > 0 && (allWordsPresent(normSrc, searchWords) || allWordsPresent(combinedTitle, searchWords))) {
 					matched = items
 					break
 				}
@@ -357,8 +366,26 @@ func extractSlugTitle(slug string) string {
 			slug = slug[:idx]
 		}
 	}
-	// Replace dashes with dots or spaces for matching against title
-	return strings.Trim(slug, "-_ ")
+	return normalizeForSearch(slug)
+}
+
+func normalizeForSearch(s string) string {
+	s = strings.ToLower(s)
+	replacer := strings.NewReplacer(".", " ", "-", " ", "_", " ", "/", " ", ":", " ")
+	s = replacer.Replace(s)
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func allWordsPresent(haystack string, words []string) bool {
+	if len(words) == 0 {
+		return false
+	}
+	for _, w := range words {
+		if w != "" && !strings.Contains(haystack, w) {
+			return false
+		}
+	}
+	return true
 }
 
 func extractDisplayTitle(rawTitle, filename string) string {
