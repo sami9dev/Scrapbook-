@@ -130,38 +130,18 @@ router.post('/scrape-page', async (req, res) => {
     let html = '';
 
     if (isXDMovies) {
-      // 1. Try quick HTTP fetch first (< 4s)
-      try {
-        const pageResponse = await fetch(targetUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Referer': 'https://huh.xdmovies.wtf/',
-          },
-          signal: AbortSignal.timeout(4000),
+      const { fetchXDMoviesHttp } = await import('../scrapers/xdmovies/http-fetch.js');
+      const httpRes = await fetchXDMoviesHttp(targetUrl, 15000);
+      if (httpRes.ok && httpRes.html) {
+        html = httpRes.html;
+      } else {
+        logger.log('XDMovies', `[scrape-page] Fast HTTP abort (no OOM Chromium): ${httpRes.error}`);
+        return res.json({
+          success: false,
+          challenge: Boolean(httpRes.challenge),
+          statusCode: httpRes.statusCode,
+          error: httpRes.error || 'Failed to fetch XDMovies page over HTTP',
         });
-        if (pageResponse.ok) {
-          const body = await pageResponse.text();
-          if (!body.includes('Just a moment...') && !body.includes('cf-turnstile') && !body.includes('security verification')) {
-            html = body;
-          }
-        }
-      } catch {}
-
-      // 2. If Cloudflare challenge or fetch failed, use stealth fetcher
-      if (!html || html.length < 500) {
-        logger.log('XDMovies', `[scrape-page] Fetching XDMovies page via stealth resolver...`);
-        const { fetchXDMoviesPage } = await import('../scrapers/xdmovies/browser-fetch.js');
-        const bfRes = await fetchXDMoviesPage(targetUrl, { timeoutMs: 65000 });
-        if (bfRes.success && bfRes.html && bfRes.html.length > 500) {
-          html = bfRes.html;
-        } else {
-          return res.json({
-            success: false,
-            challenge: true,
-            error: bfRes.error || 'Failed to bypass XDMovies security verification',
-          });
-        }
       }
     } else {
       const fetchController = new AbortController();

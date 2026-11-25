@@ -76,9 +76,15 @@ export async function createApp() {
   // Comprehensive bot status and log inspector
   app.get('/api/bot-status', (req, res) => {
     const isRunning = Boolean(botState.process && !botState.process.killed && botState.process.exitCode === null);
+    const mem = process.memoryUsage();
     res.json({
       status: 'ok',
       uptime: process.uptime(),
+      memoryMB: {
+        rss: Math.round(mem.rss / 1024 / 1024),
+        heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+        heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+      },
       bot: {
         running: isRunning,
         pid: botState.process?.pid || null,
@@ -92,6 +98,20 @@ export async function createApp() {
       tokenConfigured: botState.tokenConfigured,
       tokenMasked: botState.tokenMasked,
       recentLogs: botState.logs.slice(-40),
+      serverLogs: logger.getLogs(40),
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  app.get('/api/server-logs', (req, res) => {
+    const mem = process.memoryUsage();
+    res.json({
+      uptime: process.uptime(),
+      memoryMB: {
+        rss: Math.round(mem.rss / 1024 / 1024),
+        heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+      },
+      logs: logger.getLogs(100),
       timestamp: new Date().toISOString(),
     });
   });

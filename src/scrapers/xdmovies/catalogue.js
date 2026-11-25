@@ -60,8 +60,8 @@ const AUDIO_FORMAT_PATTERNS = [
   { label: 'AAC',    regex: /\baac\b/i },
 ];
 
-const FILE_SIZE_REGEX = /\b(\d+(?:\.\d+)?\s*(?:GB|MB))\b/i;
-const SEASON_REGEX    = /\bS(?:eason\s*)?(\d{1,2})(?=[eE\s._\-\]()]|$)/i;
+const FILE_SIZE_REGEX = /\b(\d+(?:\.\d+)?\s*(?:GB|MB|TB))\b/i;
+const SEASON_REGEX    = /(?:^|[\s._\-\[(])S(?:eason[\s._-]*)?(\d{1,2})(?=[eE\s._\-\]()]|$)/i;
 const EPISODE_REGEX   = /(?:\b|(?<=[sS]\d{1,2}))E(?:pisode\s*)?(\d{1,3})\b/i;
 
 const PROVIDER_PATTERNS = [
@@ -218,6 +218,15 @@ export function parseXDMoviesCatalogue(html, sourceUrl = '') {
     const audio = extractAudioInfo(releaseTitle);
     const provider = detectProvider(href, linkText);
 
+    const seasonM = contentType === 'series'
+      ? (releaseTitle.match(SEASON_REGEX) || $item.closest('[id*="season"]').attr('id')?.match(/season.*?(\d+)/i))
+      : null;
+    const episodeM = contentType === 'series' ? releaseTitle.match(EPISODE_REGEX) : null;
+    const season = seasonM ? parseInt(seasonM[1], 10) : (contentType === 'series' ? 1 : null);
+    const episode = episodeM ? parseInt(episodeM[1], 10) : null;
+    const isZipItem = contentType === 'series' && (/\.zip\b|\bzip\b|complete.*pack|season.*pack/i.test(releaseTitle + ' ' + linkText));
+    const scope = contentType === 'movie' ? 'movie' : (isZipItem || episode === null ? 'pack' : 'episode');
+
     allReleases.push({
       label: releaseTitle || buildLabel(attrs, 'Movie Release'),
       sectionTitle: releaseTitle,
@@ -232,9 +241,9 @@ export function parseXDMoviesCatalogue(html, sourceUrl = '') {
       audioLanguages: audio.languages,
       audioFormats: audio.formats,
       fileSize,
-      season: null,
-      episode: null,
-      scope: 'movie',
+      season,
+      episode,
+      scope,
       downloadLinks: [{ provider, label: linkText || provider, url: href, isDirectDestination: false }],
     });
   });
@@ -243,16 +252,22 @@ export function parseXDMoviesCatalogue(html, sourceUrl = '') {
   $('.pack-card, .pack-info').each((_, packEl) => {
     const $pack = $(packEl);
     const releaseTitle = $pack.find('.pack-title, h4').first().text().trim() || $pack.text().trim();
-    const $link = $pack.find('a[href]').first();
+    const $link = $pack.is('a[href]')
+      ? $pack
+      : ($pack.find('a[href]').first().length ? $pack.find('a[href]').first() : $pack.closest('a[href]'));
     const href = ($link.attr('href') || '').trim();
     if (!href || SKIP_HREF_PATTERN.test(href) || seenUrls.has(href)) return;
     seenUrls.add(href);
 
     const linkText = $link.text().trim();
-    const sizeM = linkText.match(FILE_SIZE_REGEX) || releaseTitle.match(FILE_SIZE_REGEX) || $pack.find('.file-size, .size').text().match(FILE_SIZE_REGEX) || $pack.text().match(FILE_SIZE_REGEX);
+    const sizeText = $pack.find('.size-badge, .file-size, .size').text();
+    const sizeM = linkText.match(FILE_SIZE_REGEX) || sizeText.match(FILE_SIZE_REGEX) || releaseTitle.match(FILE_SIZE_REGEX) || $pack.text().match(FILE_SIZE_REGEX);
     const fileSize = sizeM ? sizeM[1] : undefined;
 
-    const seasonM = releaseTitle.match(SEASON_REGEX) || $pack.closest('[id*="season"]').attr('id')?.match(/season.*?(\d+)/i);
+    const seasonM =
+      releaseTitle.match(SEASON_REGEX) ||
+      $pack.closest('[id*="season"]').attr('id')?.match(/season.*?(\d+)/i) ||
+      $pack.closest('.season-section').find('.toggle-season-btn, h2, h3').first().text().match(/season\s*(\d+)/i);
     const season = seasonM ? parseInt(seasonM[1], 10) : 1;
 
     const attrs = extractVideoAttributes(releaseTitle);
@@ -345,7 +360,7 @@ export function parseXDMoviesCatalogue(html, sourceUrl = '') {
 
       const seasonM  = hText.match(SEASON_REGEX);
       const episodeM = hText.match(EPISODE_REGEX);
-      const season   = seasonM  ? parseInt(seasonM[1],  10) : null;
+      const season   = seasonM  ? parseInt(seasonM[1],  10) : (contentType === 'series' ? 1 : null);
       const episode  = episodeM ? parseInt(episodeM[1], 10) : null;
 
       const linkEls = [];
@@ -407,6 +422,15 @@ export function parseXDMoviesCatalogue(html, sourceUrl = '') {
       const sizeM = parentText.match(FILE_SIZE_REGEX);
       const provider = detectProvider(href, linkText);
 
+      const seasonM = contentType === 'series'
+        ? (parentText.match(SEASON_REGEX) || linkText.match(SEASON_REGEX) || $a.closest('[id*="season"]').attr('id')?.match(/season.*?(\d+)/i))
+        : null;
+      const episodeM = contentType === 'series' ? (parentText.match(EPISODE_REGEX) || linkText.match(EPISODE_REGEX)) : null;
+      const season = seasonM ? parseInt(seasonM[1], 10) : (contentType === 'series' ? 1 : null);
+      const episode = episodeM ? parseInt(episodeM[1], 10) : null;
+      const isZipItem = contentType === 'series' && (/\.zip\b|\bzip\b|complete.*pack|season.*pack/i.test(parentText + ' ' + linkText));
+      const scope = contentType === 'movie' ? 'movie' : (isZipItem || episode === null ? 'pack' : 'episode');
+
       allReleases.push({
         label: buildLabel(attrs, linkText || 'Download Link'),
         sectionTitle: null,
@@ -421,9 +445,9 @@ export function parseXDMoviesCatalogue(html, sourceUrl = '') {
         audioLanguages: [],
         audioFormats: [],
         fileSize: sizeM ? sizeM[1] : undefined,
-        season: null,
-        episode: null,
-        scope: contentType === 'movie' ? 'movie' : 'episode',
+        season,
+        episode,
+        scope,
         downloadLinks: [{ provider, label: linkText || provider, url: href, isDirectDestination: false }],
       });
     });

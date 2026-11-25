@@ -932,7 +932,7 @@ func (r *Resolver) scrapeViaFastPath(ctx context.Context, rawURL string) (*Serie
 		return nil, err
 	}
 
-	fastCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	fastCtx, cancel := context.WithTimeout(ctx, 75*time.Second)
 	defer cancel()
 
 	reqURL := fmt.Sprintf("%s/api/scrape-page", r.baseAPI)
@@ -983,7 +983,7 @@ func (r *Resolver) scrapeViaFastPath(ctx context.Context, rawURL string) (*Serie
 	}
 
 	for _, m := range res.Records {
-		if m.Scope == "pack" {
+		if isZipPack(m) {
 			sr.Packs = append(sr.Packs, m)
 		} else {
 			sr.Episodes = append(sr.Episodes, m)

@@ -165,42 +165,20 @@ export class JobQueue {
     // Case C: User submitted an XDMovies URL (Route to stealth scraper & parser)
     const isXDMovies = /xdmovies\.[a-z0-9.]+|huh\.xdmovies|link\.xdmovies|top\.xdmovies/i.test(job.url);
     if (isXDMovies) {
-      logger.discovered(`Routing job ${jobId} to dedicated XDMovies stealth pipeline: ${job.url}`);
-      const { fetchXDMoviesPage } = await import('../scrapers/xdmovies/browser-fetch.js');
+      logger.discovered(`Routing job ${jobId} to XDMovies HTTP catalogue pipeline: ${job.url}`);
+      const { fetchXDMoviesHttp } = await import('../scrapers/xdmovies/http-fetch.js');
       const { parseXDMoviesCatalogue } = await import('../scrapers/xdmovies/catalogue.js');
       const { recordInCatalog } = await import('../utils/catalog-store.js');
 
-      let html = '';
-      try {
-        const pageRes = await fetch(job.url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Referer': 'https://huh.xdmovies.wtf/',
-          },
-          signal: AbortSignal.timeout(4000),
+      const httpRes = await fetchXDMoviesHttp(job.url, 15000);
+      if (!httpRes.ok || !httpRes.html) {
+        await jobsRepo.updateJob(jobId, {
+          status: SCRAPED_STATUS.HUMAN_VERIFICATION_REQUIRED,
+          error: httpRes.error || 'XDMovies page blocked or unreachable from Render IP',
         });
-        if (pageRes.ok) {
-          const body = await pageRes.text();
-          if (!body.includes('Just a moment...') && !body.includes('cf-turnstile') && !body.includes('security verification')) {
-            html = body;
-          }
-        }
-      } catch {}
-
-      if (!html || html.length < 500) {
-        logger.log('XDMovies', `Job ${jobId}: Fetching XDMovies page via stealth resolver...`);
-        const bfRes = await fetchXDMoviesPage(job.url, { timeoutMs: 65000 });
-        if (bfRes.success && bfRes.html && bfRes.html.length > 500) {
-          html = bfRes.html;
-        } else {
-          await jobsRepo.updateJob(jobId, {
-            status: SCRAPED_STATUS.HUMAN_VERIFICATION_REQUIRED,
-            error: bfRes.error || 'Failed to bypass XDMovies security verification',
-          });
-          return;
-        }
+        return;
       }
+      const html = httpRes.html;
 
       const catalogue = parseXDMoviesCatalogue(html, job.url);
       const isMoviePage = catalogue.type === 'movie';

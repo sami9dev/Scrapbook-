@@ -48,6 +48,19 @@ export function sanitizeData(data) {
 class Logger {
   constructor(options = {}) {
     this.silent = options.silent || false;
+    this.recentLogs = [];
+    this.maxLogs = options.maxLogs || 150;
+  }
+
+  _record(formatted) {
+    this.recentLogs.push(formatted);
+    if (this.recentLogs.length > this.maxLogs) {
+      this.recentLogs.shift();
+    }
+  }
+
+  getLogs(limit = 50) {
+    return this.recentLogs.slice(-limit);
   }
 
   formatMessage(tag, message, meta) {
@@ -61,8 +74,9 @@ class Logger {
   }
 
   log(tag, message, meta) {
-    if (this.silent) return;
     const formatted = this.formatMessage(tag, message, meta);
+    this._record(formatted);
+    if (this.silent) return;
     console.log(formatted);
   }
 
@@ -91,20 +105,23 @@ class Logger {
   }
 
   warning(message, meta) {
-    if (this.silent) return;
     const formatted = this.formatMessage('WARNING', message, meta);
+    this._record(formatted);
+    if (this.silent) return;
     console.warn(formatted);
   }
 
   error(message, meta) {
-    if (this.silent) return;
     const formatted = this.formatMessage('ERROR', message, meta);
+    this._record(formatted);
+    if (this.silent) return;
     console.error(formatted);
   }
 
   security(message, meta) {
-    if (this.silent) return;
     const formatted = this.formatMessage('SECURITY', message, meta);
+    this._record(formatted);
+    if (this.silent) return;
     console.warn(formatted);
   }
 }

@@ -186,6 +186,28 @@ describe('XDMovies Catalogue Parser', () => {
     expect(ep1.episode).toBe(1);
     expect(ep1.downloadLinks[0].url).toContain('sample-s01e01');
   });
+
+  it('parses multi-season series with 3 seasons and 13 complete zip packs accurately', () => {
+    const counts = [5, 4, 4];
+    const sections = counts.map((n, idx) => {
+      const s = idx + 1;
+      const cards = Array.from({ length: n }, (_, i) => {
+        const q = i === 0 ? '2160p' : (i === 1 ? '1080p.H.265' : (i === 2 ? '1080p.H.264' : (i === 3 ? '720p' : '480p')));
+        return `<div class="pack-card"><div class="pack-info"><h4 class="pack-title">Delhi.Crime.S0${s}.${q}.NF.WEB-DL-XDMovies.com.zip</h4><a href="https://link.xdmovies.wtf/download/dc_s${s}_${i}" class="download-button"><span class="size-badge">${(i + 1) * 2}.5 GB</span></a></div></div>`;
+      }).join('');
+      return `<div class="season-section"><button class="toggle-season-btn">Season ${s} Packs/Zips</button><div id="season-packs-${s}" class="season-episodes"><div class="packs-grid">${cards}</div></div></div>`;
+    }).join('');
+    const html = `<html><head><title>Delhi Crime - XDMovies</title></head><body><h2>Delhi Crime</h2><div class="seasons-container">${sections}</div></body></html>`;
+
+    const catalogue = parseXDMoviesCatalogue(html, 'https://huh.xdmovies.wtf/series/delhi-crime-2160p-1080p-hindi-english-download-87508');
+    expect(catalogue.type).toBe('series');
+    expect(catalogue.seasons.length).toBe(3);
+    expect(catalogue.totalReleases).toBe(13);
+    expect(catalogue.seasons[0].releases.length).toBe(5);
+    expect(catalogue.seasons[1].releases.length).toBe(4);
+    expect(catalogue.seasons[2].releases.length).toBe(4);
+    expect(catalogue.seasons.every((s) => s.releases.every((r) => r.scope === 'pack'))).toBe(true);
+  });
 });
 
 describe('XDMovies Direct Resolver Cases', () => {
