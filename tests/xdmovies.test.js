@@ -349,11 +349,12 @@ describe('XDMovies Catalogue Parser', () => {
     vm.runInNewContext(scriptMatch[1], sandbox);
 
     const packsAndEpisodes = [
-      { _id: 'e1', scope: 'episode', season: 1, episode: 1, quality: '1080p', filename: 'Show.S01E01.1080p.mkv', providerUrl: 'https://hubcloud.pw/drive/ep1', status: 'RESOLVED' },
-      { _id: 'p3a', scope: 'pack', season: 3, episode: null, quality: '1080p', filename: 'Show.S03.1080p.zip', providerUrl: 'https://hubcloud.pw/drive/s3a', status: 'RESOLVED' },
-      { _id: 'p1a', scope: 'pack', season: 1, episode: null, quality: '1080p', filename: 'Show.S01.1080p.zip', providerUrl: 'https://hubcloud.pw/drive/s1a', status: 'RESOLVED' },
-      { _id: 'p2a', scope: 'pack', season: 2, episode: null, quality: '720p', filename: 'Show.S02.720p.zip', providerUrl: 'https://hubcloud.pw/drive/s2a', status: 'RESOLVED' },
-      { _id: 'p3b', scope: 'pack', season: 3, episode: null, quality: '720p', filename: 'Show.S03.720p.zip', providerUrl: 'https://hubcloud.pw/drive/s3b', status: 'RESOLVED' },
+      { _id: 'e1', scope: 'episode', season: 1, episode: 1, quality: '1080p', codec: 'HEVC', filename: 'Show.S01E01.1080p.H.265.mkv', providerUrl: 'https://hubcloud.pw/drive/ep1', status: 'RESOLVED' },
+      { _id: 'p3a', scope: 'pack', season: 3, episode: null, quality: '1080p', codec: 'HEVC', filename: 'Show.S03.1080p.H.265.zip', providerUrl: 'https://hubcloud.pw/drive/s3a', status: 'RESOLVED' },
+      { _id: 'p1a', scope: 'pack', season: 1, episode: null, quality: '1080p', codec: 'HEVC', filename: 'Show.S01.1080p.H.265.zip', providerUrl: 'https://hubcloud.pw/drive/s1a', status: 'RESOLVED' },
+      { _id: 'p1b', scope: 'pack', season: 1, episode: null, quality: '1080p', codec: 'x264', filename: 'Show.S01.1080p.H.264.zip', providerUrl: 'https://hubcloud.pw/drive/s1b', status: 'RESOLVED' },
+      { _id: 'p2a', scope: 'pack', season: 2, episode: null, quality: '720p', codec: 'x264', filename: 'Show.S02.720p.H.264.zip', providerUrl: 'https://hubcloud.pw/drive/s2a', status: 'RESOLVED' },
+      { _id: 'p3b', scope: 'pack', season: 3, episode: null, quality: '720p', codec: 'AV1', filename: 'Show.S03.720p.AV1.zip', providerUrl: 'https://hubcloud.pw/drive/s3b', status: 'RESOLVED' },
     ];
 
     vm.runInNewContext(`allLinks = ${JSON.stringify(packsAndEpisodes)}; updateTabCounts(); setActiveScopeTab('pack', true);`, sandbox);
@@ -361,14 +362,26 @@ describe('XDMovies Catalogue Parser', () => {
     expect(elements.seasonFilterGroup.style.display).toBe('flex');
     const pillOrder = [...elements.seasonFilterPills.innerHTML.matchAll(/data-season="([^"]+)"/g)].map((m) => m[1]);
     expect(pillOrder).toEqual(['all', '1', '2', '3']);
-    expect(elements.linksTableBody.innerHTML).toContain('Season 1 — Complete Zip Packs (1)');
+    expect(elements.linksTableBody.innerHTML).toContain('Season 1 — Complete Zip Packs (2)');
     expect(elements.linksTableBody.innerHTML).toContain('Season 2 — Complete Zip Packs (1)');
     expect(elements.linksTableBody.innerHTML).toContain('Season 3 — Complete Zip Packs (2)');
 
     vm.runInNewContext(`currentSeasonFilter = '3'; renderTable();`, sandbox);
     expect(elements.filteredCountInfo.textContent).toBe('Showing 2 Complete Season Packs');
-    expect(elements.linksTableBody.innerHTML).toContain('Show.S03.1080p.zip');
-    expect(elements.linksTableBody.innerHTML).not.toContain('Show.S01.1080p.zip');
+    expect(elements.linksTableBody.innerHTML).toContain('Show.S03.1080p.H.265.zip');
+    expect(elements.linksTableBody.innerHTML).not.toContain('Show.S01.1080p.H.265.zip');
+
+    vm.runInNewContext(`currentSeasonFilter = 'all'; setActiveCodecPill('h265');`, sandbox);
+    expect(elements.filteredCountInfo.textContent).toBe('Showing 2 Complete Season Packs');
+    expect(elements.linksTableBody.innerHTML).toContain('Show.S01.1080p.H.265.zip');
+    expect(elements.linksTableBody.innerHTML).toContain('Show.S03.1080p.H.265.zip');
+    expect(elements.linksTableBody.innerHTML).not.toContain('H.264');
+
+    vm.runInNewContext(`setActiveCodecPill('h264');`, sandbox);
+    expect(elements.filteredCountInfo.textContent).toBe('Showing 2 Complete Season Packs');
+    expect(elements.linksTableBody.innerHTML).toContain('Show.S01.1080p.H.264.zip');
+    expect(elements.linksTableBody.innerHTML).toContain('Show.S02.720p.H.264.zip');
+    expect(elements.linksTableBody.innerHTML).not.toContain('H.265');
   });
 });
 

@@ -820,6 +820,17 @@
                 <button type="button" class="filter-pill" data-quality="480p">480p</button>
               </div>
             </div>
+
+            <!-- Codec Filter Pills -->
+            <div class="filter-group" id="codecFilterGroup">
+              <span class="filter-label">Codec:</span>
+              <div class="filter-pills" id="codecFilterPills">
+                <button type="button" class="filter-pill active" data-codec="all">All</button>
+                <button type="button" class="filter-pill" data-codec="h265">H.265</button>
+                <button type="button" class="filter-pill" data-codec="h264">H.264</button>
+                <button type="button" class="filter-pill" data-codec="av1">AV1</button>
+              </div>
+            </div>
           </div>
 
           <!-- Action Controls -->
@@ -972,6 +983,7 @@
     let currentScopeFilter = 'episode'; // Default container: Download Individual Episodes
     let currentSeasonFilter = 'all';
     let currentQualityFilter = 'all';
+    let currentCodecFilter = 'all';
     let currentTableSearch = '';
 
     async function loadStats() {
@@ -1083,6 +1095,16 @@
     if (rawHtmlSourceUrl) {
       rawHtmlSourceUrl.addEventListener('input', (e) => checkUrlContent(e.target.value.trim()));
       rawHtmlSourceUrl.addEventListener('paste', () => setTimeout(() => checkUrlContent(rawHtmlSourceUrl.value.trim()), 50));
+    }
+
+    function matchesCodec(link, targetCodec) {
+      if (!targetCodec || targetCodec === 'all') return true;
+      if (!link) return false;
+      const haystack = `${link.codec || ''} ${link.filename || ''} ${link.title || ''}`.toLowerCase();
+      if (targetCodec === 'h265') return /hevc|h\.?265|x265/i.test(haystack);
+      if (targetCodec === 'h264') return /h\.?264|x264|\bavc\b/i.test(haystack);
+      if (targetCodec === 'av1') return /\bav1\b/i.test(haystack);
+      return haystack.includes(targetCodec.toLowerCase());
     }
 
     function getLinkSeason(link) {
@@ -1223,7 +1245,12 @@
           if (!matchesQuality(link.quality, currentQualityFilter)) return false;
         }
 
-        // 5. Title / Text Search Filter
+        // 5. Video Codec Filter (H.265 / H.264 / AV1)
+        if (currentCodecFilter !== 'all') {
+          if (!matchesCodec(link, currentCodecFilter)) return false;
+        }
+
+        // 6. Title / Text Search Filter
         if (currentTableSearch) {
           const q = currentTableSearch.toLowerCase();
           const t = (link.filename || link.title || '').toLowerCase();
@@ -1263,6 +1290,10 @@
         const filters = [];
         if (currentSeasonFilter !== 'all') filters.push(`Season ${currentSeasonFilter}`);
         if (currentQualityFilter !== 'all') filters.push(currentQualityFilter);
+        if (currentCodecFilter !== 'all') {
+          const codecLabels = { h265: 'H.265', h264: 'H.264', av1: 'AV1' };
+          filters.push(codecLabels[currentCodecFilter] || currentCodecFilter.toUpperCase());
+        }
         if (currentTableSearch) filters.push(`matching "${currentTableSearch}"`);
         if (filters.length > 0) msg += ` for ${filters.join(', ')}`;
 
@@ -1392,15 +1423,25 @@
       renderTable();
     }
 
-    function setActiveQualityPill(quality) {
-      currentQualityFilter = quality || 'all';
-      document.querySelectorAll('#qualityFilterPills .filter-pill').forEach((pill) => {
-        if (pill.getAttribute('data-quality') === currentQualityFilter) {
+    function syncActivePillGroup(selector, attr, activeValue) {
+      document.querySelectorAll(selector).forEach((pill) => {
+        if (pill.getAttribute(attr) === activeValue) {
           pill.classList.add('active');
         } else {
           pill.classList.remove('active');
         }
       });
+    }
+
+    function setActiveQualityPill(quality) {
+      currentQualityFilter = quality || 'all';
+      syncActivePillGroup('#qualityFilterPills .filter-pill', 'data-quality', currentQualityFilter);
+      renderTable();
+    }
+
+    function setActiveCodecPill(codec) {
+      currentCodecFilter = codec || 'all';
+      syncActivePillGroup('#codecFilterPills .filter-pill', 'data-codec', currentCodecFilter);
       renderTable();
     }
 
@@ -1417,6 +1458,14 @@
       pill.addEventListener('click', () => {
         const q = pill.getAttribute('data-quality') || 'all';
         setActiveQualityPill(q);
+      });
+    });
+
+    // Codec filter pills
+    document.querySelectorAll('#codecFilterPills .filter-pill').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        const c = pill.getAttribute('data-codec') || 'all';
+        setActiveCodecPill(c);
       });
     });
 
@@ -1509,7 +1558,8 @@
         const a = document.createElement('a');
         a.href = url;
         const filenamePrefix = currentScopeFilter === 'episode' ? 'episodes' : (currentScopeFilter === 'pack' ? 'packs' : 'links');
-        a.download = `scraped-${filenamePrefix}-${currentQualityFilter}.txt`;
+        const codecSuffix = currentCodecFilter && currentCodecFilter !== 'all' ? `-${currentCodecFilter}` : '';
+        a.download = `scraped-${filenamePrefix}-${currentQualityFilter}${codecSuffix}.txt`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -1664,6 +1714,7 @@
             userHasManuallySelectedScope = false;
             setActiveScopeTab('episode', false);
             setActiveQualityPill('all');
+            setActiveCodecPill('all');
             updateTabCounts();
             renderTable();
             loadStats();
