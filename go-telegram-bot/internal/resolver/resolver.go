@@ -162,6 +162,22 @@ func (r *Resolver) fetchAllStoredLinks(ctx context.Context) []StoredLink {
 
 // GetSeriesReleases looks up all releases, season packs, and episodes for a movie/series page.
 // [OPT-1] Uses targeted ?sourceUrl= query on indexed field, avoiding full 500-item scan.
+func isZipPack(m StoredLink) bool {
+	if strings.EqualFold(m.Scope, "pack") || strings.EqualFold(m.Type, "pack") {
+		return true
+	}
+	fLower := strings.ToLower(m.Filename)
+	tLower := strings.ToLower(m.Title)
+	if strings.Contains(fLower, ".zip") || strings.Contains(fLower, ".rar") || strings.Contains(fLower, "zip") || strings.Contains(tLower, "zip") {
+		return true
+	}
+	if (strings.Contains(fLower, "complete") || strings.Contains(tLower, "complete")) &&
+		(strings.Contains(fLower, "pack") || strings.Contains(tLower, "pack") || strings.Contains(fLower, "season") || strings.Contains(tLower, "season")) {
+		return true
+	}
+	return false
+}
+
 func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*SeriesResult, error) {
 	normQuery := strings.TrimRight(strings.ToLower(rawURL), "/")
 	slug := extractSlug(normQuery)
@@ -236,7 +252,7 @@ func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*Serie
 		if strings.EqualFold(m.Provider, "HubDrive") || strings.Contains(strings.ToLower(m.ProviderURL), "hubdrive") || strings.Contains(strings.ToLower(m.MediatorURL), "hubdrive") {
 			continue
 		}
-		if m.Scope == "pack" || m.Type == "pack" || strings.HasSuffix(strings.ToLower(m.Filename), ".zip") {
+		if isZipPack(m) {
 			sr.Packs = append(sr.Packs, m)
 		} else {
 			sr.Episodes = append(sr.Episodes, m)
@@ -307,7 +323,7 @@ func (r *Resolver) SearchByTitle(ctx context.Context, titleQuery string) (*Serie
 		if strings.EqualFold(m.Provider, "HubDrive") || strings.Contains(strings.ToLower(m.ProviderURL), "hubdrive") || strings.Contains(strings.ToLower(m.MediatorURL), "hubdrive") {
 			continue
 		}
-		if m.Scope == "pack" || m.Type == "pack" || strings.HasSuffix(strings.ToLower(m.Filename), ".zip") {
+		if isZipPack(m) {
 			sr.Packs = append(sr.Packs, m)
 		} else {
 			sr.Episodes = append(sr.Episodes, m)

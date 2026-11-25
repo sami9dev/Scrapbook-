@@ -87,6 +87,8 @@ func (b *Bot) registerHandlers() {
 	b.teleBot.Handle("/help", b.handleHelp)
 	b.teleBot.Handle("/stats", b.handleStats)
 	b.teleBot.Handle("/cache", b.handleCache)
+	b.teleBot.Handle("/zip", b.handleZipCommand)
+	b.teleBot.Handle("/zips", b.handleZipCommand)
 	b.teleBot.Handle(tele.OnText, b.handleText)
 	b.teleBot.Handle(tele.OnCallback, b.handleCallback)
 }
@@ -95,28 +97,34 @@ func (b *Bot) handleStart(c tele.Context) error {
 	msg := `⚡ <b>High-Speed Link & Media Bot (4KHub4U + XDMovies)</b>
 
 Powered by Go Goroutines, Channels, and In-Memory Caching:
-• <b>4KHub4U & XDMovies:</b> Send any movie/series URL to get <b>ALL</b> releases with full titles & direct HubCloud links!
-• <b>Auto-Scrape:</b> Automatically scrapes new titles on-demand if not yet cached!
-• <b>Parallel Shortener Resolver:</b> Resolves mediator links (GreenMotors / XDMovies) concurrently into direct HubCloud links.
+• <b>📦 Only Zips Mode:</b> Send <code>/zip &lt;title&gt;</code> to get <b>ONLY Season Zip Packs</b> filtered by Season & Quality (4K, 1080p, 720p, 480p) without any episode clutter!
+• <b>4KHub4U & XDMovies:</b> Send any series URL or title to choose interactive Season, Quality, or Zip packs!
+• <b>Auto-Scrape:</b> Automatically scrapes new titles on-demand in cloud if not yet cached!
+• <b>Parallel Shortener Resolver:</b> Resolves mediator links concurrently into direct HubCloud links.
 • <b>Microsecond Cache:</b> Stored links return in &lt;1ms.
 
 👉 <b>Try sending:</b>
-1. Any Movie or Series title: <code>Campus Drivers</code>, <code>Mirzapur</code>, or <code>Avatar</code>
-2. A 4KHDHub / 4KHub4U link:
-<code>https://4khdhub.one/dexter-resurrection-series-2297/</code>
-3. An XDMovies link:
-<code>https://huh.xdmovies.wtf/series/campus-drivers-2160p-1080p-hindi-french-download-303044</code>`
+1. Only Zips command: <code>/zip Dhindora</code> or <code>/zip Mirzapur</code>
+2. Any series/movie title: <code>Dhindora</code>, <code>Mirzapur</code>, or <code>Avatar</code>
+3. An XDMovies series link:
+<code>https://huh.xdmovies.wtf/series/dhindora-2160p-1080p-hindi-download-275204</code>`
 	return c.Send(msg, tele.ModeHTML)
 }
 
 func (b *Bot) handleHelp(c tele.Context) error {
 	msg := `📖 <b>Usage Guidelines</b>
 
-<b>1. Movie / Series Pages:</b>
-Paste any movie or series URL to get all releases and direct download links. If it's a new title, the bot will auto-scrape it on-demand!
+<b>1. 📦 Only Zips (by Quality & Season):</b>
+Send <code>/zip &lt;title or url&gt;</code> (e.g. <code>/zip Dhindora</code>) to immediately browse and deliver ONLY Complete Season Zip packs by quality (4K, 1080p, 720p, 480p).
 
-<b>2. Download Links:</b>
-Paste single or multiple download links (separated by newlines). The bot will dispatch them across parallel Go worker routines and resolve each one to its HubCloud destination!`
+<b>2. Series / Movie Pages:</b>
+Paste any series URL to get interactive buttons:
+• <code>[ 📦 ONLY Season Zips by Quality & Season ]</code>
+• <code>[ ⚡ Deliver ALL Season Zips Only ]</code>
+• <code>[ 📺 Season 1 ]</code> <code>[ 📺 Season 2 ]</code>
+
+<b>3. Download Links:</b>
+Paste mediator links to resolve them into direct HubCloud destinations.`
 	return c.Send(msg, tele.ModeHTML)
 }
 
@@ -178,6 +186,22 @@ func (b *Bot) handleStats(c tele.Context) error {
 
 func (b *Bot) handleText(c tele.Context) error {
 	text := strings.TrimSpace(c.Text())
+	lowerText := strings.ToLower(text)
+
+	// If user specifically asked for zip in text: e.g. "zip dhindora" or "dhindora zip"
+	if strings.HasPrefix(lowerText, "zip ") {
+		q := strings.TrimSpace(text[4:])
+		if q != "" {
+			return b.handleZipSearch(c, q)
+		}
+	}
+	if strings.HasSuffix(lowerText, " zip") {
+		q := strings.TrimSpace(text[:len(text)-4])
+		if q != "" {
+			return b.handleZipSearch(c, q)
+		}
+	}
+
 	matches := urlRegex.FindAllString(text, -1)
 
 	// 1. If text contains no URL, treat as title search!
@@ -241,6 +265,71 @@ func (b *Bot) handleContentPage(c tele.Context, contentURL string) error {
 	}
 
 	return b.displaySeriesOrMovie(c, statusMsg, series, duration)
+}
+
+func (b *Bot) handleZipCommand(c tele.Context) error {
+	args := strings.TrimSpace(c.Message().Payload)
+	if args == "" {
+		msg := `📦 <b>Complete Season Packs (Zips Only)</b>
+
+Send any TV Series title or link to get <b>ONLY Season Zip Packs</b> filtered by Quality and Season without any episode clutter!
+
+👉 <b>Try sending:</b>
+• <code>/zip Dhindora</code>
+• <code>/zip Mirzapur</code>
+• <code>/zip https://huh.xdmovies.wtf/series/dhindora-2160p-1080p-hindi-download-275204</code>`
+		return c.Send(msg, tele.ModeHTML)
+	}
+
+	return b.handleZipSearch(c, args)
+}
+
+func (b *Bot) handleZipSearch(c tele.Context, query string) error {
+	statusMsg, _ := b.teleBot.Send(c.Recipient(), fmt.Sprintf("🔍 <i>Searching catalogue for Season Zips of '<b>%s</b>'...</i>", html.EscapeString(query)), tele.ModeHTML)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	var series *resolver.SeriesResult
+	var err error
+
+	matches := urlRegex.FindAllString(query, -1)
+	if len(matches) > 0 && b.resolver.IsContentPage(matches[0]) {
+		series, err = b.resolver.GetSeriesReleases(ctx, matches[0])
+	} else {
+		series, err = b.resolver.SearchByTitle(ctx, query)
+	}
+
+	if err != nil {
+		if statusMsg != nil {
+			_, _ = b.teleBot.Edit(statusMsg, err.Error(), tele.ModeHTML)
+			return nil
+		}
+		return c.Send(err.Error(), tele.ModeHTML)
+	}
+
+	if len(series.Packs) == 0 {
+		msg := fmt.Sprintf("⚠️ <b>No Complete Season Zip Packs found for '%s'.</b>\n\n<i>This title only has individual episodes or is a standalone movie. (Total releases: %d)</i>", html.EscapeString(series.Title), series.Total)
+		if statusMsg != nil {
+			_, _ = b.teleBot.Edit(statusMsg, msg, tele.ModeHTML)
+			return nil
+		}
+		return c.Send(msg, tele.ModeHTML)
+	}
+
+	seriesKey := makeSeriesKey(series)
+	b.seriesCache.Store(seriesKey, series)
+
+	text := b.formatZipNavigatorText(series)
+	menu := b.buildZipNavigatorMenu(seriesKey, series)
+
+	if statusMsg != nil {
+		if _, err := b.teleBot.Edit(statusMsg, text, menu, tele.ModeHTML); err == nil {
+			return nil
+		}
+	}
+	_, err = b.teleBot.Send(c.Recipient(), text, menu, tele.ModeHTML)
+	return err
 }
 
 func (b *Bot) displaySeriesOrMovie(c tele.Context, statusMsg *tele.Message, series *resolver.SeriesResult, duration time.Duration) error {
@@ -439,16 +528,181 @@ func countSeasonEpisodes(series *resolver.SeriesResult, season int) int {
 	return count
 }
 
+type QualitySummary struct {
+	Tag   string // e.g. "4k", "1080p", "720p", "480p"
+	Label string // e.g. "4K (2160p)", "1080p", "720p", "480p"
+	Rank  int
+	Count int
+}
+
+func getPackQualityTag(filename, quality string) (string, string, int) {
+	lowerFile := strings.ToLower(filename)
+	lowerQ := strings.ToLower(quality)
+
+	if strings.Contains(lowerFile, "2160p") || strings.Contains(lowerFile, "4k") || strings.Contains(lowerQ, "2160") || strings.Contains(lowerQ, "4k") {
+		return "4k", "4K UHD (2160p)", 400
+	}
+	if strings.Contains(lowerFile, "1080p") || strings.Contains(lowerQ, "1080") {
+		if strings.Contains(lowerFile, "hevc") || strings.Contains(lowerFile, "h.265") || strings.Contains(lowerFile, "h265") || strings.Contains(lowerFile, "x265") {
+			return "1080p", "1080p HEVC", 310
+		}
+		return "1080p", "1080p FHD", 300
+	}
+	if strings.Contains(lowerFile, "720p") || strings.Contains(lowerQ, "720") {
+		if strings.Contains(lowerFile, "hevc") || strings.Contains(lowerFile, "h.265") || strings.Contains(lowerFile, "h265") || strings.Contains(lowerFile, "x265") {
+			return "720p", "720p HEVC", 210
+		}
+		return "720p", "720p HD", 200
+	}
+	if strings.Contains(lowerFile, "480p") || strings.Contains(lowerQ, "480") {
+		return "480p", "480p SD", 100
+	}
+	return "other", "Standard", 50
+}
+
+func getAvailableZipQualities(series *resolver.SeriesResult, season int) []QualitySummary {
+	qMap := make(map[string]*QualitySummary)
+	var qKeys []string
+
+	for _, p := range series.Packs {
+		s := p.Season
+		if s <= 0 {
+			s = 1
+		}
+		if season > 0 && s != season {
+			continue
+		}
+		tag, label, rank := getPackQualityTag(p.Filename, p.Quality)
+		if qMap[tag] == nil {
+			qMap[tag] = &QualitySummary{
+				Tag:   tag,
+				Label: label,
+				Rank:  rank,
+			}
+			qKeys = append(qKeys, tag)
+		}
+		qMap[tag].Count++
+	}
+
+	sort.Slice(qKeys, func(i, j int) bool {
+		return qMap[qKeys[i]].Rank > qMap[qKeys[j]].Rank
+	})
+
+	var result []QualitySummary
+	for _, k := range qKeys {
+		result = append(result, *qMap[k])
+	}
+	return result
+}
+
+func getAvailableSeasonsForPacks(series *resolver.SeriesResult) []int {
+	seasonsMap := make(map[int]bool)
+	for _, p := range series.Packs {
+		s := p.Season
+		if s <= 0 {
+			s = 1
+		}
+		seasonsMap[s] = true
+	}
+	var seasons []int
+	for s := range seasonsMap {
+		seasons = append(seasons, s)
+	}
+	sort.Ints(seasons)
+	return seasons
+}
+
+func (b *Bot) formatZipNavigatorText(series *resolver.SeriesResult) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("📦 <b>%s — Complete Season Packs (Zips)</b>\n\n", html.EscapeString(series.Title)))
+	seasonsList := getAvailableSeasonsForPacks(series)
+	if len(seasonsList) > 1 {
+		var sNames []string
+		for _, s := range seasonsList {
+			sNames = append(sNames, fmt.Sprintf("Season %d", s))
+		}
+		sb.WriteString(fmt.Sprintf("🗓️ <b>Available Seasons:</b> %s (%d Seasons)\n", strings.Join(sNames, ", "), len(seasonsList)))
+	} else if len(seasonsList) == 1 {
+		sb.WriteString(fmt.Sprintf("🗓️ <b>Available Season:</b> Season %d\n", seasonsList[0]))
+	}
+	sb.WriteString(fmt.Sprintf("📁 <b>Total Season Packs (Zips):</b> %d\n", len(series.Packs)))
+	sb.WriteString("━━━━━━━━━━━━━━━━━━━━━━\n")
+	sb.WriteString("👇 <b>Select your desired Season and Quality of Zip below:</b>")
+	return sb.String()
+}
+
+func (b *Bot) buildZipNavigatorMenu(seriesKey string, series *resolver.SeriesResult) *tele.ReplyMarkup {
+	menu := &tele.ReplyMarkup{}
+	var rows [][]tele.InlineButton
+
+	seasonsList := getAvailableSeasonsForPacks(series)
+
+	for _, s := range seasonsList {
+		qualities := getAvailableZipQualities(series, s)
+		var qBtns []tele.InlineButton
+		for _, q := range qualities {
+			btnText := fmt.Sprintf("📦 S%d • %s (%d)", s, q.Label, q.Count)
+			if len(seasonsList) == 1 {
+				btnText = fmt.Sprintf("📦 %s Zip (%d)", q.Label, q.Count)
+			}
+			qBtns = append(qBtns, tele.InlineButton{
+				Text: btnText,
+				Data: fmt.Sprintf("zipq:%d:%s:%s", s, q.Tag, seriesKey),
+			})
+		}
+		for i := 0; i < len(qBtns); i += 2 {
+			end := i + 2
+			if end > len(qBtns) {
+				end = len(qBtns)
+			}
+			rows = append(rows, qBtns[i:end])
+		}
+		if len(qualities) > 1 {
+			rows = append(rows, []tele.InlineButton{
+				{
+					Text: fmt.Sprintf("📦 Deliver All Season %d Zips (%d)", s, countSeasonPacks(series, s)),
+					Data: fmt.Sprintf("zipq:%d:all:%s", s, seriesKey),
+				},
+			})
+		}
+	}
+
+	if len(series.Packs) > 1 && len(seasonsList) > 1 {
+		rows = append(rows, []tele.InlineButton{
+			{
+				Text: fmt.Sprintf("⚡ Deliver ALL Zips (All %d Packs)", len(series.Packs)),
+				Data: fmt.Sprintf("zipq:0:all:%s", seriesKey),
+			},
+		})
+	}
+
+	rows = append(rows, []tele.InlineButton{
+		{
+			Text: "🔙 Back to Full Menu (with Episodes)",
+			Data: fmt.Sprintf("back:0:%s", seriesKey),
+		},
+	})
+
+	menu.InlineKeyboard = rows
+	return menu
+}
+
 func (b *Bot) buildSeriesMainMenu(seriesKey string, series *resolver.SeriesResult, seasonsList []int) *tele.ReplyMarkup {
 	menu := &tele.ReplyMarkup{}
 	var rows [][]tele.InlineButton
 
-	// Row 1: Complete Season Packs (Zips) button if packs exist
+	// Priority Row 1: If packs exist, prominent "Only Zips" options!
 	if len(series.Packs) > 0 {
 		rows = append(rows, []tele.InlineButton{
 			{
-				Text: fmt.Sprintf("📦 Complete Season Packs (Zips) [%d]", len(series.Packs)),
-				Data: fmt.Sprintf("packs:0:%s", seriesKey),
+				Text: fmt.Sprintf("📦 ONLY Season Zips by Quality & Season [%d]", len(series.Packs)),
+				Data: fmt.Sprintf("zipnav:0:%s", seriesKey),
+			},
+		})
+		rows = append(rows, []tele.InlineButton{
+			{
+				Text: fmt.Sprintf("⚡ Deliver ALL Season Zips Only [%d]", len(series.Packs)),
+				Data: fmt.Sprintf("zipq:0:all:%s", seriesKey),
 			},
 		})
 	}
@@ -458,8 +712,13 @@ func (b *Bot) buildSeriesMainMenu(seriesKey string, series *resolver.SeriesResul
 		var sBtns []tele.InlineButton
 		for _, s := range seasonsList {
 			count := countSeasonItems(series, s)
+			pCount := countSeasonPacks(series, s)
+			label := fmt.Sprintf("📺 Season %d (%d)", s, count)
+			if pCount > 0 {
+				label = fmt.Sprintf("📺 Season %d (%d Zips)", s, pCount)
+			}
 			sBtns = append(sBtns, tele.InlineButton{
-				Text: fmt.Sprintf("📺 Season %d (%d)", s, count),
+				Text: label,
 				Data: fmt.Sprintf("menu:%d:%s", s, seriesKey),
 			})
 		}
@@ -483,10 +742,10 @@ func (b *Bot) buildSeriesMainMenu(seriesKey string, series *resolver.SeriesResul
 		}
 	}
 
-	// Row 3: Deliver All button
+	// Row 3: Deliver Everything button
 	rows = append(rows, []tele.InlineButton{
 		{
-			Text: fmt.Sprintf("⚡ Deliver All Releases (%d)", series.Total),
+			Text: fmt.Sprintf("🌐 Deliver Everything (Packs + Episodes) [%d]", series.Total),
 			Data: fmt.Sprintf("all:0:%s", seriesKey),
 		},
 	})
@@ -502,11 +761,27 @@ func (b *Bot) buildSeasonSubmenu(seriesKey string, series *resolver.SeriesResult
 	packsCount := countSeasonPacks(series, season)
 	epCount := countSeasonEpisodes(series, season)
 
+	// If packs exist for this season, offer Zip options by Quality!
 	if packsCount > 0 {
+		qualities := getAvailableZipQualities(series, season)
+		var qBtns []tele.InlineButton
+		for _, q := range qualities {
+			qBtns = append(qBtns, tele.InlineButton{
+				Text: fmt.Sprintf("📦 S%d • %s Zip (%d)", season, q.Label, q.Count),
+				Data: fmt.Sprintf("zipq:%d:%s:%s", season, q.Tag, seriesKey),
+			})
+		}
+		for i := 0; i < len(qBtns); i += 2 {
+			end := i + 2
+			if end > len(qBtns) {
+				end = len(qBtns)
+			}
+			rows = append(rows, qBtns[i:end])
+		}
 		rows = append(rows, []tele.InlineButton{
 			{
-				Text: fmt.Sprintf("📦 Season %d Packs (Zips) [%d]", season, packsCount),
-				Data: fmt.Sprintf("packs:%d:%s", season, seriesKey),
+				Text: fmt.Sprintf("📦 All Season %d Zips (%d)", season, packsCount),
+				Data: fmt.Sprintf("zipq:%d:all:%s", season, seriesKey),
 			},
 		})
 	}
@@ -514,7 +789,7 @@ func (b *Bot) buildSeasonSubmenu(seriesKey string, series *resolver.SeriesResult
 	if epCount > 0 {
 		rows = append(rows, []tele.InlineButton{
 			{
-				Text: fmt.Sprintf("🎞️ Season %d Episodes [%d]", season, epCount),
+				Text: fmt.Sprintf("🎞️ Season %d Episodes Only (%d)", season, epCount),
 				Data: fmt.Sprintf("ep:%d:%s", season, seriesKey),
 			},
 		})
@@ -522,7 +797,7 @@ func (b *Bot) buildSeasonSubmenu(seriesKey string, series *resolver.SeriesResult
 
 	rows = append(rows, []tele.InlineButton{
 		{
-			Text: fmt.Sprintf("⚡ Deliver All Season %d [%d]", season, packsCount+epCount),
+			Text: fmt.Sprintf("⚡ Deliver Everything Season %d (%d)", season, packsCount+epCount),
 			Data: fmt.Sprintf("all:%d:%s", season, seriesKey),
 		},
 	})
@@ -715,6 +990,118 @@ func (b *Bot) formatSeriesBlocks(series *resolver.SeriesResult, targetSeason int
 	return msgBlocks
 }
 
+func (b *Bot) formatZipBlocks(series *resolver.SeriesResult, targetSeason int, targetQuality string) []string {
+	type qualityGroup struct {
+		Category string
+		Rank     int
+		Packs    []resolver.StoredLink
+	}
+
+	type seasonZipGroup struct {
+		Season      int
+		Qualities   map[string]*qualityGroup
+		QualityKeys []string
+	}
+
+	seasonsMap := make(map[int]*seasonZipGroup)
+	var seasonsList []int
+
+	getOrCreateSeason := func(s int) *seasonZipGroup {
+		if s <= 0 {
+			s = 1
+		}
+		if seasonsMap[s] == nil {
+			seasonsMap[s] = &seasonZipGroup{
+				Season:    s,
+				Qualities: make(map[string]*qualityGroup),
+			}
+			seasonsList = append(seasonsList, s)
+		}
+		return seasonsMap[s]
+	}
+
+	for _, p := range series.Packs {
+		s := p.Season
+		if s <= 0 {
+			s = 1
+		}
+		if targetSeason > 0 && s != targetSeason {
+			continue
+		}
+		dest := p.ProviderURL
+		if dest == "" {
+			dest = p.MediatorURL
+		}
+		if dest == "" || strings.Contains(strings.ToLower(dest), "hubdrive") || strings.EqualFold(p.Provider, "HubDrive") {
+			continue
+		}
+
+		tag, cat, rank := getPackQualityTag(p.Filename, p.Quality)
+		if targetQuality != "all" && targetQuality != "" && tag != targetQuality {
+			continue
+		}
+
+		sg := getOrCreateSeason(s)
+		if sg.Qualities[cat] == nil {
+			sg.Qualities[cat] = &qualityGroup{
+				Category: cat,
+				Rank:     rank,
+			}
+			sg.QualityKeys = append(sg.QualityKeys, cat)
+		}
+		sg.Qualities[cat].Packs = append(sg.Qualities[cat].Packs, p)
+	}
+
+	sort.Ints(seasonsList)
+
+	var msgBlocks []string
+	for _, s := range seasonsList {
+		sg := seasonsMap[s]
+		sort.Slice(sg.QualityKeys, func(i, j int) bool {
+			return sg.Qualities[sg.QualityKeys[i]].Rank > sg.Qualities[sg.QualityKeys[j]].Rank
+		})
+
+		for _, qKey := range sg.QualityKeys {
+			qg := sg.Qualities[qKey]
+			var qSB strings.Builder
+			qSB.WriteString(fmt.Sprintf("📦 <b>════ SEASON %d • %s COMPLETE PACK ════</b>\n\n", s, qg.Category))
+
+			for _, p := range qg.Packs {
+				name := p.Filename
+				if name == "" {
+					name = p.Title
+				}
+				dest := cleanURL(p.ProviderURL)
+				if dest == "" && p.MediatorURL != "" {
+					if cached, hit, err := b.cache.GetL1(p.MediatorURL); hit && err == nil && isDirectHubCloud(cached) {
+						dest = cleanURL(cached)
+					} else {
+						dest = cleanURL(p.MediatorURL)
+					}
+				}
+				sizeStr := p.SizeDisplay
+				sizeLine := ""
+				if sizeStr != "" {
+					sizeLine = fmt.Sprintf("   ├ 💾 <b>Size:</b> %s\n", sizeStr)
+				}
+				if isDirectHubCloud(dest) {
+					qSB.WriteString(fmt.Sprintf("📁 <code>%s</code>\n%s   └ ⚡ <b>Direct HubCloud:</b> <a href=\"%s\">%s</a>\n\n",
+						html.EscapeString(name), sizeLine, html.EscapeString(dest), html.EscapeString(dest)))
+				} else {
+					qSB.WriteString(fmt.Sprintf("📁 <code>%s</code>\n%s   └ 🔗 <b>Mediator Link:</b> <a href=\"%s\">%s</a>\n\n",
+						html.EscapeString(name), sizeLine, html.EscapeString(dest), html.EscapeString(dest)))
+				}
+			}
+
+			if len(qg.Packs) > 0 {
+				msgBlocks = append(msgBlocks, qSB.String())
+			}
+		}
+	}
+
+	return msgBlocks
+}
+
 func (b *Bot) handleCallback(c tele.Context) error {
 	cb := c.Callback()
 	if cb == nil {
@@ -732,7 +1119,14 @@ func (b *Bot) handleCallback(c tele.Context) error {
 
 	action := parts[0]
 	seasonNum, _ := strconv.Atoi(parts[1])
-	seriesKey := parts[2]
+	qualityTag := "all"
+	seriesKey := ""
+	if len(parts) >= 4 {
+		qualityTag = parts[2]
+		seriesKey = parts[3]
+	} else {
+		seriesKey = parts[2]
+	}
 
 	val, ok := b.seriesCache.Load(seriesKey)
 	if !ok {
@@ -744,6 +1138,52 @@ func (b *Bot) handleCallback(c tele.Context) error {
 	series := val.(*resolver.SeriesResult)
 
 	switch action {
+	case "zipnav":
+		menu := b.buildZipNavigatorMenu(seriesKey, series)
+		text := b.formatZipNavigatorText(series)
+		_ = c.Respond()
+		if cb.Message != nil {
+			_, err := b.teleBot.Edit(cb.Message, text, menu, tele.ModeHTML)
+			if err != nil {
+				log.Printf("[Bot] Edit zipnav callback error: %v", err)
+			}
+		}
+		return nil
+
+	case "zipq":
+		tagLabel := qualityTag
+		if qualityTag == "all" {
+			tagLabel = "All Qualities"
+		} else {
+			tagLabel = strings.ToUpper(qualityTag)
+		}
+		seasonLabel := "All Seasons"
+		if seasonNum > 0 {
+			seasonLabel = fmt.Sprintf("Season %d", seasonNum)
+		}
+		_ = c.Respond(&tele.CallbackResponse{Text: fmt.Sprintf("Delivering %s %s Zips...", seasonLabel, tagLabel)})
+
+		blocks := b.formatZipBlocks(series, seasonNum, qualityTag)
+		if len(blocks) == 0 {
+			b.sendTelegramMessage(c.Recipient(), fmt.Sprintf("⚠️ No %s %s Zip packs found.", seasonLabel, tagLabel))
+			return nil
+		}
+
+		header := ""
+		if seasonNum > 0 {
+			header = fmt.Sprintf("📦 <b>%s • %s Complete Packs (Zips Only) — %s:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n",
+				seasonLabel, tagLabel, html.EscapeString(series.Title))
+		} else {
+			header = fmt.Sprintf("📦 <b>Complete Season Packs (Zips Only) — %s:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n",
+				html.EscapeString(series.Title))
+		}
+
+		b.sendTelegramMessage(c.Recipient(), header+blocks[0])
+		for _, blk := range blocks[1:] {
+			b.sendTelegramMessage(c.Recipient(), blk)
+		}
+		return nil
+
 	case "menu":
 		submenu := b.buildSeasonSubmenu(seriesKey, series, seasonNum)
 		pCount := countSeasonPacks(series, seasonNum)
@@ -789,7 +1229,7 @@ func (b *Bot) handleCallback(c tele.Context) error {
 
 	case "packs":
 		_ = c.Respond(&tele.CallbackResponse{Text: "Delivering Complete Season Packs (Zips)..."})
-		blocks := b.formatSeriesBlocks(series, seasonNum, "packs")
+		blocks := b.formatZipBlocks(series, seasonNum, "all")
 		if len(blocks) == 0 {
 			b.sendTelegramMessage(c.Recipient(), "⚠️ No Season Packs found for this selection.")
 			return nil
