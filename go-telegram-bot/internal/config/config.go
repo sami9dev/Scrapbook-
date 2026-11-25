@@ -25,6 +25,9 @@ func Load() *Config {
 	_ = godotenv.Load()
 
 	token := os.Getenv("TELEGRAM_BOT_TOKEN")
+	if token == "" || token == "123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" {
+		token = "8265322595:AAH1eMtGwWvIf8Wqo0dGrcZ9V5OqE-6ZpEI"
+	}
 	workers := getEnvInt("WORKER_CONCURRENCY", 1)
 	cacheMinutes := getEnvInt("CACHE_TTL_MINUTES", 1440)
 	resolverAPI := os.Getenv("LOCAL_RESOLVER_API")

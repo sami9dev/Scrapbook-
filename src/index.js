@@ -20,6 +20,25 @@ import apiRoutes from './api/routes.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+export const botState = {
+  process: null,
+  binPath: null,
+  tokenConfigured: false,
+  tokenMasked: null,
+  spawnCount: 0,
+  restartCount: 0,
+  lastExitReason: null,
+  logs: [],
+  addLog(type, text) {
+    const timestamp = new Date().toISOString();
+    const lines = String(text).split('\n').map((l) => l.trim()).filter(Boolean);
+    for (const l of lines) {
+      this.logs.push(`[${timestamp}] [${type}] ${l}`);
+      if (this.logs.length > 100) this.logs.shift();
+    }
+  },
+};
+
 export async function createApp() {
   const app = express();
 
@@ -44,7 +63,37 @@ export async function createApp() {
 
   // Health check for Render / UptimeRobot keep-alive
   app.get('/health', (req, res) => {
-    res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+    const isRunning = Boolean(botState.process && !botState.process.killed && botState.process.exitCode === null);
+    res.json({
+      status: 'ok',
+      uptime: process.uptime(),
+      botRunning: isRunning,
+      botPid: botState.process?.pid || null,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Comprehensive bot status and log inspector
+  app.get('/api/bot-status', (req, res) => {
+    const isRunning = Boolean(botState.process && !botState.process.killed && botState.process.exitCode === null);
+    res.json({
+      status: 'ok',
+      uptime: process.uptime(),
+      bot: {
+        running: isRunning,
+        pid: botState.process?.pid || null,
+        exitCode: botState.process?.exitCode ?? null,
+        signalCode: botState.process?.signalCode ?? null,
+        spawnCount: botState.spawnCount,
+        restartCount: botState.restartCount,
+        lastExitReason: botState.lastExitReason,
+        binPath: botState.binPath,
+      },
+      tokenConfigured: botState.tokenConfigured,
+      tokenMasked: botState.tokenMasked,
+      recentLogs: botState.logs.slice(-40),
+      timestamp: new Date().toISOString(),
+    });
   });
 
   // Simple Instant Solver UI
@@ -71,6 +120,7 @@ export async function startServer() {
     const app = await createApp();
 
     // 3. Listen on port with error handling
+    let isShuttingDown = false;
     let goBotProcess = null;
     let telegramBot = null;
 
@@ -123,7 +173,12 @@ export async function startServer() {
     }
 
     // 5. Initialize High-Speed Go Telegram Bot daemon (guaranteed single-instance)
-    if (process.env.TELEGRAM_BOT_TOKEN) {
+    const DEFAULT_TELEGRAM_BOT_TOKEN = '8265322595:AAH1eMtGwWvIf8Wqo0dGrcZ9V5OqE-6ZpEI';
+    const effectiveBotToken = (process.env.TELEGRAM_BOT_TOKEN || DEFAULT_TELEGRAM_BOT_TOKEN).trim();
+    botState.tokenConfigured = Boolean(effectiveBotToken);
+    botState.tokenMasked = effectiveBotToken ? `${effectiveBotToken.slice(0, 10)}...` : null;
+
+    if (effectiveBotToken) {
       try {
         const { spawn, execSync } = await import('node:child_process');
         const fsModule = await import('node:fs');
@@ -150,6 +205,8 @@ export async function startServer() {
           }
         }
 
+        botState.binPath = botBin;
+
         if (botBin) {
           if (process.platform !== 'win32') {
             try { fsModule.chmodSync(botBin, 0o755); } catch (_) {}
@@ -157,37 +214,68 @@ export async function startServer() {
           const botDir = path.dirname(botBin);
           const env = {
             ...process.env,
+            TELEGRAM_BOT_TOKEN: effectiveBotToken,
             LOCAL_RESOLVER_API: `http://127.0.0.1:${config.port}/api/resolve-link`,
             RESOLVER_LOCAL_API: `http://127.0.0.1:${config.port}/api/resolve-link`,
             WORKER_CONCURRENCY: process.env.WORKER_CONCURRENCY || '1',
             PORT: String(config.port),
           };
-          let isShuttingDown = false;
+
           const spawnBot = () => {
             if (isShuttingDown) return;
-            logger.database(`Spawning Go Telegram Bot from: ${botBin}`);
+            botState.spawnCount++;
+            logger.database(`Spawning Go Telegram Bot from: ${botBin} (Attempt #${botState.spawnCount})`);
+            botState.addLog('info', `Spawning Go Telegram Bot from ${botBin} (Attempt #${botState.spawnCount})`);
+
             goBotProcess = spawn(botBin, [], {
               cwd: botDir,
               env,
-              stdio: 'inherit',
+              stdio: ['ignore', 'pipe', 'pipe'],
             });
+            botState.process = goBotProcess;
+
+            goBotProcess.stdout.on('data', (data) => {
+              const str = data.toString();
+              process.stdout.write(str);
+              botState.addLog('stdout', str);
+            });
+
+            goBotProcess.stderr.on('data', (data) => {
+              const str = data.toString();
+              process.stderr.write(str);
+              botState.addLog('stderr', str);
+            });
+
             goBotProcess.on('error', (err) => {
               logger.error(`Go Telegram Bot process error: ${err.message}`);
+              botState.lastExitReason = `Process error: ${err.message}`;
+              botState.addLog('error', `Process error: ${err.message}`);
             });
+
             goBotProcess.on('exit', (code, signal) => {
+              botState.lastExitReason = `Exited code=${code} signal=${signal}`;
               logger.warning(`Go Telegram Bot exited with code ${code} signal ${signal}`);
+              botState.addLog('exit', `Exited code=${code} signal=${signal}`);
               if (!isShuttingDown) {
-                logger.database('Auto-restarting Go Telegram Bot in 2s...');
-                setTimeout(spawnBot, 2000);
+                botState.restartCount++;
+                const delayMs = Math.min(2000 * Math.pow(1.5, Math.min(botState.restartCount, 5)), 15000);
+                logger.database(`Auto-restarting Go Telegram Bot in ${Math.round(delayMs / 1000)}s...`);
+                botState.addLog('info', `Auto-restarting in ${Math.round(delayMs / 1000)}s...`);
+                setTimeout(spawnBot, delayMs);
               }
             });
           };
+
           spawnBot();
         } else {
-          logger.warning('No Go bot binary found (bot-linux/bot.exe).');
+          const msg = `No Go bot binary found in candidate paths: ${candidatePaths.join(', ')}`;
+          logger.warning(msg);
+          botState.addLog('warning', msg);
+          botState.lastExitReason = msg;
         }
       } catch (goErr) {
         logger.error(`Error spawning Go Telegram Bot: ${goErr.message}`);
+        botState.addLog('error', `Error spawning: ${goErr.message}`);
       }
     }
 

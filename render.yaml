@@ -15,7 +15,7 @@ services:
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: "0"
       - key: TELEGRAM_BOT_TOKEN
-        sync: false
+        value: "8265322595:AAH1eMtGwWvIf8Wqo0dGrcZ9V5OqE-6ZpEI"
       - key: WORKER_CONCURRENCY
         value: "1"
       - key: MEDIATOR_CONCURRENCY
