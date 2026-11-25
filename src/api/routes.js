@@ -917,23 +917,39 @@ router.post('/parse-html', async (req, res) => {
 
     const platform = isXDMovies ? 'XDMovies' : '4KHub4U';
     const defaultSourceUrl = isXDMovies ? 'https://huh.xdmovies.wtf/' : 'https://4khdhub.one/';
+    let effectiveSourceUrl = (sourceUrl || '').trim();
+    const isPlaceholderSource = !effectiveSourceUrl || effectiveSourceUrl.includes('source-pasted.local') || effectiveSourceUrl === 'https://4khdhub.one/tv-series/';
+    if (isPlaceholderSource) {
+      const canonicalMatch = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i);
+      if (canonicalMatch && canonicalMatch[1]) {
+        const cand = canonicalMatch[1].trim();
+        try {
+          effectiveSourceUrl = cand.startsWith('http') ? cand : new URL(cand, defaultSourceUrl).href;
+        } catch {
+          effectiveSourceUrl = defaultSourceUrl;
+        }
+      } else {
+        effectiveSourceUrl = defaultSourceUrl;
+      }
+    }
 
     let catalogue;
     const { recordInCatalog } = await import('../utils/catalog-store.js');
 
     if (isXDMovies) {
       const { parseXDMoviesCatalogue } = await import('../scrapers/xdmovies/catalogue.js');
-      catalogue = parseXDMoviesCatalogue(html, sourceUrl || defaultSourceUrl);
+      catalogue = parseXDMoviesCatalogue(html, effectiveSourceUrl);
     } else {
       const { parse4KHubCatalogue, resolveCatalogueLinks } = await import('../scrapers/4khub4u/catalogue.js');
-      const rawCatalogue = parse4KHubCatalogue(html, sourceUrl || defaultSourceUrl);
+      const rawCatalogue = parse4KHubCatalogue(html, effectiveSourceUrl);
       catalogue = await resolveCatalogueLinks(rawCatalogue, { concurrency: 20, timeout: 4500 }).catch(() => rawCatalogue);
     }
     const isMoviePage = catalogue.type === 'movie';
 
     recordInCatalog({
       title: catalogue.title || `${platform} Content`,
-      url: sourceUrl || defaultSourceUrl,
+      url: effectiveSourceUrl,
       format: isMoviePage ? 'Movie' : 'Series',
       platform,
     });
@@ -960,8 +976,8 @@ router.post('/parse-html', async (req, res) => {
         const status = isDirect ? 'RESOLVED' : 'DISCOVERED';
 
         const doc = {
-          sourceUrl: sourceUrl || defaultSourceUrl,
-          sourceDomain: sourceUrl && sourceUrl.startsWith('http') ? new URL(sourceUrl).hostname : (isXDMovies ? 'huh.xdmovies.wtf' : '4khdhub.one'),
+          sourceUrl: effectiveSourceUrl,
+          sourceDomain: effectiveSourceUrl.startsWith('http') ? new URL(effectiveSourceUrl).hostname : (isXDMovies ? 'huh.xdmovies.wtf' : '4khdhub.one'),
           title: rel.label || catalogue.title,
           filename: rel.filename || rel.label || catalogue.title,
           scope: rel.scope || (isMoviePage ? 'movie' : (rel.episode !== null && rel.episode !== undefined ? 'episode' : 'pack')),

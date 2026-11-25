@@ -665,12 +665,12 @@
 
       <details style="margin-top: 14px; font-size: 0.85rem; color: var(--text-muted); border-top: 1px dashed var(--border-color); padding-top: 10px;">
         <summary style="cursor: pointer; font-weight: 500; color: #93c5fd; user-select: none;">
-          ⚡ Or Paste HTML Directly (Instant extraction for 4KHDHub / 4KHub4U)
+          ⚡ Or Paste HTML Directly (Instant extraction for XDMovies / 4KHDHub / 4KHub4U)
         </summary>
         <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
           <textarea id="rawHtmlTextarea" rows="4" style="width: 100%; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; color: #f3f4f6; font-family: monospace; font-size: 0.8rem; padding: 8px; resize: vertical;" placeholder="Paste raw page HTML here..."></textarea>
           <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-            <input type="text" id="rawHtmlSourceUrl" placeholder="Source URL (e.g. https://4khdhub.one/...)" style="flex: 1; min-width: 260px; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #f3f4f6; font-size: 0.85rem;" />
+            <input type="text" id="rawHtmlSourceUrl" placeholder="Source URL (optional — auto-detected from HTML canonical tag)" style="flex: 1; min-width: 260px; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; color: #f3f4f6; font-size: 0.85rem;" />
             <select id="rawHtmlScope" class="quality-select" style="min-width: 140px; padding: 6px 10px; font-size: 0.85rem;">
               <option value="all" selected>📁 All Content</option>
               <option value="episode">🎬 Single EP's</option>
@@ -1637,7 +1637,7 @@
     if (parseRawHtmlBtn) {
       parseRawHtmlBtn.addEventListener('click', async () => {
         const html = rawHtmlTextarea.value.trim();
-        const sourceUrl = rawHtmlSourceUrl.value.trim() || 'https://4khdhub.one/tv-series/';
+        const sourceUrl = rawHtmlSourceUrl.value.trim();
         const quality = rawHtmlQuality ? rawHtmlQuality.value : 'all';
         const scope = rawHtmlScope ? rawHtmlScope.value : 'episode';
 

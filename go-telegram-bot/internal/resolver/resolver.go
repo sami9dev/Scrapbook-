@@ -218,10 +218,12 @@ func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*Serie
 	// 4. If not found in DB, auto-scrape on-demand via HTTP fast path (no browser!)
 	if len(matched) == 0 {
 		log.Printf("[Auto-Scrape] Initiating HTTP fast-path catalogue fetch for: %s", rawURL)
+		var fastErr error
 		if sr, err := r.scrapeViaFastPath(ctx, rawURL); err == nil && sr != nil && sr.Total > 0 {
 			log.Printf("[Auto-Scrape] Fast-path retrieved %d releases for %s", sr.Total, rawURL)
 			return sr, nil
 		} else if err != nil {
+			fastErr = err
 			log.Printf("[Auto-Scrape] Fast-path note: %v", err)
 		}
 
@@ -234,6 +236,10 @@ func (r *Resolver) GetSeriesReleases(ctx context.Context, rawURL string) (*Serie
 			} else if err != nil {
 				log.Printf("[Auto-Scrape] Rust Worker query notice: %v", err)
 			}
+		}
+
+		if fastErr != nil && strings.Contains(strings.ToLower(fastErr.Error()), "cloudflare") {
+			return nil, errors.New("Blocked by Cloudflare human verification on cloud IP. Open the page in your browser, paste the page HTML at https://linkscrap-bot.onrender.com/ (Paste HTML), then retry /zip <title> here.")
 		}
 
 		return nil, errors.New("title is not yet cached. Please allow the Render cloud worker to complete scraping.")
