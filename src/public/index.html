@@ -1085,6 +1085,24 @@
       rawHtmlSourceUrl.addEventListener('paste', () => setTimeout(() => checkUrlContent(rawHtmlSourceUrl.value.trim()), 50));
     }
 
+    function getLinkSeason(link) {
+      if (!link) return null;
+      if (link.season !== null && link.season !== undefined && Number(link.season) > 0) {
+        return Number(link.season);
+      }
+      const txt = `${link.filename || ''} ${link.title || ''}`;
+      const m = txt.match(/(?:^|[\s._\-\[(])S(?:eason[\s._-]*)?(\d{1,2})(?=[eE\s._\-\]()]|$)/i);
+      return m ? parseInt(m[1], 10) : null;
+    }
+
+    function getLinkScope(link) {
+      if (!link) return 'movie';
+      if (link.scope) return link.scope;
+      if (link.episode !== null && link.episode !== undefined) return 'episode';
+      if (link.season !== null && link.season !== undefined) return 'pack';
+      return 'movie';
+    }
+
     function updateTabCounts() {
       let epCount = 0;
       let packCount = 0;
@@ -1096,7 +1114,7 @@
         // Never count greenmotors mediator links or HubDrive
         if (url.includes('greenmotors') || url.includes('?id=')) return;
         if (/hubdrive/i.test(link.provider || '') || /hubdrive/i.test(url) || /hubdrive/i.test(link.mediatorUrl || '')) return;
-        const scope = link.scope || (link.episode !== null && link.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
+        const scope = getLinkScope(link);
         if (scope === 'episode') epCount++;
         else if (scope === 'pack') packCount++;
         else if (scope === 'movie') movieCount++;
@@ -1107,11 +1125,13 @@
       const packBadge = document.getElementById('tabCountPacks');
       const allBadge = document.getElementById('tabCountAll');
       const movieBadge = document.getElementById('tabCountMovies');
+      const tableLinkCount = document.getElementById('viewTableLinkCount');
 
       if (epBadge) epBadge.textContent = epCount;
       if (packBadge) packBadge.textContent = packCount;
       if (movieBadge) movieBadge.textContent = movieCount;
       if (allBadge) allBadge.textContent = allCount;
+      if (tableLinkCount) tableLinkCount.textContent = allCount;
 
       // Auto-selection if user hasn't explicitly clicked a tab
       if (!userHasManuallySelectedScope) {
@@ -1132,26 +1152,30 @@
       const seasonFilterGroup = document.getElementById('seasonFilterGroup');
       if (!seasonPillsContainer) return;
 
-      const isMovie = currentScopeFilter === 'movie' || (allLinks.length > 0 && allLinks.every((l) => (l.scope || 'movie') === 'movie'));
+      const isMovie = currentScopeFilter === 'movie' || (allLinks.length > 0 && allLinks.every((l) => getLinkScope(l) === 'movie'));
 
-      // If scope is 'pack' or movie, season filtering is not applicable
-      if (currentScopeFilter === 'pack' || currentScopeFilter === 'movie' || isMovie) {
+      if (currentScopeFilter === 'movie' || isMovie) {
         if (seasonFilterGroup) seasonFilterGroup.style.display = 'none';
         return;
       }
 
-      // Extract unique seasons from records belonging to active scope
+      // Extract unique seasons from records belonging to active scope (including zip packs)
       const relevantLinks = (allLinks || []).filter((l) => {
-        const scope = l.scope || (link.episode !== null && link.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
+        const scope = getLinkScope(l);
         if (currentScopeFilter === 'episode' && scope !== 'episode') return false;
-        return l.season !== null && l.season !== undefined;
+        if (currentScopeFilter === 'pack' && scope !== 'pack') return false;
+        return getLinkSeason(l) !== null;
       });
 
-      const seasons = [...new Set(relevantLinks.map((l) => l.season))].sort((a, b) => b - a);
+      const seasons = [...new Set(relevantLinks.map((l) => getLinkSeason(l)))].sort((a, b) => a - b);
 
-      if (seasons.length <= 1 && currentScopeFilter !== 'episode') {
+      if (seasons.length === 0 || (seasons.length <= 1 && currentScopeFilter === 'all')) {
         if (seasonFilterGroup) seasonFilterGroup.style.display = 'none';
         return;
+      }
+
+      if (currentSeasonFilter !== 'all' && !seasons.some((s) => String(s) === String(currentSeasonFilter))) {
+        currentSeasonFilter = 'all';
       }
 
       if (seasonFilterGroup) seasonFilterGroup.style.display = 'flex';
@@ -1175,14 +1199,14 @@
     }
 
     function getFilteredLinks() {
-      return (allLinks || []).filter((link) => {
+      const filtered = (allLinks || []).filter((link) => {
         // 1. STRICT SECURITY & FIDELITY: Never show or output greenmotors mediator URLs or HubDrive links
         const url = link.providerUrl || '';
         if (url.includes('greenmotors') || url.includes('?id=')) return false;
         if (/hubdrive/i.test(link.provider || '') || /hubdrive/i.test(url) || /hubdrive/i.test(link.mediatorUrl || '')) return false;
 
         // 2. Scope Container Filter
-        const scope = link.scope || (link.episode !== null && link.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
+        const scope = getLinkScope(link);
         const isMovie = scope === 'movie';
 
         if (currentScopeFilter === 'movie' && !isMovie) return false;
@@ -1191,7 +1215,7 @@
 
         // 3. Season Filter
         if (currentSeasonFilter !== 'all') {
-          if (String(link.season) !== String(currentSeasonFilter)) return false;
+          if (String(getLinkSeason(link)) !== String(currentSeasonFilter)) return false;
         }
 
         // 4. Robust Quality Filter
@@ -1208,6 +1232,12 @@
 
         return true;
       });
+
+      if (currentScopeFilter === 'pack' || currentScopeFilter === 'episode') {
+        filtered.sort((a, b) => (getLinkSeason(a) || 999) - (getLinkSeason(b) || 999));
+      }
+
+      return filtered;
     }
 
     function renderTable() {
@@ -1244,21 +1274,39 @@
         return;
       }
 
+      let lastRenderedSeason = undefined;
       linksTableBody.innerHTML = visibleLinks.map((link, idx) => {
         const statusClass = link.status || 'UNKNOWN';
         const displayTitle = link.filename || link.title || 'Untitled Release';
-        const scope = link.scope || (link.episode !== null && link.episode !== undefined ? 'episode' : (link.season !== null && link.season !== undefined ? 'pack' : 'movie'));
+        const scope = getLinkScope(link);
+        const linkSeason = getLinkSeason(link);
+
+        let seasonDividerHtml = '';
+        if ((currentScopeFilter === 'pack' || currentScopeFilter === 'episode') && linkSeason !== null && linkSeason !== lastRenderedSeason) {
+          lastRenderedSeason = linkSeason;
+          const seasonTotal = visibleLinks.filter((v) => getLinkSeason(v) === linkSeason).length;
+          const groupLabel = currentScopeFilter === 'pack'
+            ? `📦 Season ${linkSeason} — Complete Zip Packs (${seasonTotal})`
+            : `📺 Season ${linkSeason} (${seasonTotal})`;
+          seasonDividerHtml = `
+            <tr class="season-divider-row" style="background: rgba(59, 130, 246, 0.08); cursor: default;">
+              <td colspan="6" style="padding: 8px 16px; font-size: 0.8rem; font-weight: 700; color: #93c5fd; letter-spacing: 0.4px; border-bottom: 1px solid var(--border-color);">
+                ${escapeHtml(groupLabel)}
+              </td>
+            </tr>
+          `;
+        }
 
         // Scope badge
         let scopeBadgeHtml = '';
         if (scope === 'episode') {
-          const epLabel = (link.season !== null && link.season !== undefined && link.episode !== null && link.episode !== undefined)
-            ? `S${String(link.season).padStart(2, '0')}E${String(link.episode).padStart(2, '0')}`
+          const epLabel = (linkSeason !== null && link.episode !== null && link.episode !== undefined)
+            ? `S${String(linkSeason).padStart(2, '0')}E${String(link.episode).padStart(2, '0')}`
             : (link.episode !== null && link.episode !== undefined ? `EP ${link.episode}` : 'EPISODE');
           scopeBadgeHtml = `<span class="badge-ep">${escapeHtml(epLabel)}</span>`;
         } else if (scope === 'pack') {
-          const packLabel = (link.season !== null && link.season !== undefined)
-            ? `S${String(link.season).padStart(2, '0')} PACK`
+          const packLabel = linkSeason !== null
+            ? `S${String(linkSeason).padStart(2, '0')} PACK`
             : 'ZIP / PACK';
           scopeBadgeHtml = `<span class="badge-pack">${escapeHtml(packLabel)}</span>`;
         } else {
@@ -1297,7 +1345,7 @@
           `;
         }
 
-        return `
+        return `${seasonDividerHtml}
           <tr data-index="${idx}">
             <td style="max-width: 500px; word-break: break-all;">
               <div style="font-family: monospace; font-size: 0.85rem; color: #f1f5f9; font-weight: 500;">

@@ -1,5 +1,7 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import vm from 'node:vm';
 import { describe, it, expect, vi } from 'vitest';
 import { isXDMoviesUrl, isXDMoviesMediatorUrl } from '../src/scrapers/xdmovies/types.js';
 import { parseXDMoviesCatalogue } from '../src/scrapers/xdmovies/catalogue.js';
@@ -274,6 +276,99 @@ describe('XDMovies Catalogue Parser', () => {
       scrapedLinksRepo.collection.documents = origLinksDocs;
       jobsRepo.collection.documents = origJobsDocs;
     }
+  });
+
+  it('shows Season filter pills and separates seasons when Season Packs (Zip) tab is selected in dashboard HTML', () => {
+    const html = fs.readFileSync(path.resolve('src/public/index.html'), 'utf8');
+    const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);
+    expect(scriptMatch).not.toBeNull();
+
+    const makeEl = (id, attrs = {}) => ({
+      id,
+      attrs: { ...attrs },
+      style: {},
+      classList: {
+        _set: new Set(),
+        add(c) { this._set.add(c); },
+        remove(c) { this._set.delete(c); },
+        contains(c) { return this._set.has(c); },
+      },
+      children: [],
+      innerHTML: '',
+      textContent: '',
+      value: '',
+      checked: true,
+      addEventListener() {},
+      querySelectorAll() { return []; },
+      getAttribute(k) { return this.attrs[k] ?? null; },
+    });
+
+    const elements = {
+      linksTableBody: makeEl('linksTableBody'),
+      seasonFilterGroup: makeEl('seasonFilterGroup'),
+      seasonFilterPills: makeEl('seasonFilterPills'),
+      filteredCountInfo: makeEl('filteredCountInfo'),
+      tabCountEpisodes: makeEl('tabCountEpisodes'),
+      tabCountPacks: makeEl('tabCountPacks'),
+      tabCountAll: makeEl('tabCountAll'),
+      tabCountMovies: makeEl('tabCountMovies'),
+      viewTableLinkCount: makeEl('viewTableLinkCount'),
+      recordModal: makeEl('recordModal'),
+      modalJson: makeEl('modalJson'),
+      modalClose: makeEl('modalClose'),
+      scrapeForm: makeEl('scrapeForm'),
+      targetUrl: makeEl('targetUrl'),
+      targetScope: makeEl('targetScope'),
+      targetQuality: makeEl('targetQuality'),
+      submitBtn: makeEl('submitBtn'),
+      submitFeedback: makeEl('submitFeedback'),
+      refreshBtn: makeEl('refreshBtn'),
+      autoResetCheckbox: makeEl('autoResetCheckbox'),
+      resetDataBtn: makeEl('resetDataBtn'),
+      copyFormattedBtn: makeEl('copyFormattedBtn'),
+      downloadFormattedBtn: makeEl('downloadFormattedBtn'),
+    };
+
+    const sandbox = {
+      console,
+      fetch: async () => ({ ok: false, json: async () => [] }),
+      setInterval: () => 0,
+      setTimeout,
+      clearTimeout,
+      URL,
+      navigator: {},
+      window: { addEventListener() {}, scrollTo() {}, isSecureContext: false },
+      document: {
+        getElementById: (id) => elements[id] || null,
+        querySelectorAll: () => [],
+        createElement: () => makeEl('tmp'),
+        body: { appendChild() {}, removeChild() {} },
+      },
+    };
+
+    vm.runInNewContext(scriptMatch[1], sandbox);
+
+    const packsAndEpisodes = [
+      { _id: 'e1', scope: 'episode', season: 1, episode: 1, quality: '1080p', filename: 'Show.S01E01.1080p.mkv', providerUrl: 'https://hubcloud.pw/drive/ep1', status: 'RESOLVED' },
+      { _id: 'p3a', scope: 'pack', season: 3, episode: null, quality: '1080p', filename: 'Show.S03.1080p.zip', providerUrl: 'https://hubcloud.pw/drive/s3a', status: 'RESOLVED' },
+      { _id: 'p1a', scope: 'pack', season: 1, episode: null, quality: '1080p', filename: 'Show.S01.1080p.zip', providerUrl: 'https://hubcloud.pw/drive/s1a', status: 'RESOLVED' },
+      { _id: 'p2a', scope: 'pack', season: 2, episode: null, quality: '720p', filename: 'Show.S02.720p.zip', providerUrl: 'https://hubcloud.pw/drive/s2a', status: 'RESOLVED' },
+      { _id: 'p3b', scope: 'pack', season: 3, episode: null, quality: '720p', filename: 'Show.S03.720p.zip', providerUrl: 'https://hubcloud.pw/drive/s3b', status: 'RESOLVED' },
+    ];
+
+    vm.runInNewContext(`allLinks = ${JSON.stringify(packsAndEpisodes)}; updateTabCounts(); setActiveScopeTab('pack', true);`, sandbox);
+
+    expect(elements.seasonFilterGroup.style.display).toBe('flex');
+    const pillOrder = [...elements.seasonFilterPills.innerHTML.matchAll(/data-season="([^"]+)"/g)].map((m) => m[1]);
+    expect(pillOrder).toEqual(['all', '1', '2', '3']);
+    expect(elements.linksTableBody.innerHTML).toContain('Season 1 — Complete Zip Packs (1)');
+    expect(elements.linksTableBody.innerHTML).toContain('Season 2 — Complete Zip Packs (1)');
+    expect(elements.linksTableBody.innerHTML).toContain('Season 3 — Complete Zip Packs (2)');
+
+    vm.runInNewContext(`currentSeasonFilter = '3'; renderTable();`, sandbox);
+    expect(elements.filteredCountInfo.textContent).toBe('Showing 2 Complete Season Packs');
+    expect(elements.linksTableBody.innerHTML).toContain('Show.S03.1080p.zip');
+    expect(elements.linksTableBody.innerHTML).not.toContain('Show.S01.1080p.zip');
   });
 });
 
